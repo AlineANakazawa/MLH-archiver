@@ -1,8 +1,4 @@
-#[cfg(not(feature = "otel"))]
 use env_logger::Env;
-
-#[cfg(feature = "otel")]
-use mlh_archiver::otel;
 
 use mlh_parser::Result;
 use mlh_parser::config;
@@ -13,14 +9,8 @@ use std::sync::{
 };
 
 fn main() -> Result<()> {
-    #[cfg(feature = "otel")]
-    let _guard = otel::init_tracing_subscriber();
-
-    #[cfg(not(feature = "otel"))]
-    {
-        let env = Env::default().filter_or("RUST_LOG", "info");
-        env_logger::init_from_env(env);
-    }
+    let env = Env::default().filter_or("RUST_LOG", "info");
+    env_logger::init_from_env(env);
 
     log::info!("mlh_parser starting — build: {}", env!("CARGO_PKG_VERSION"));
 

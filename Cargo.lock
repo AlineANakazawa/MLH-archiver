@@ -2117,12 +2117,6 @@ dependencies = [
  "log",
  "mail-parser",
  "mlh_archiver",
- "opentelemetry",
- "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry-semantic-conventions",
- "opentelemetry-stdout",
- "opentelemetry_sdk",
  "parquet",
  "rayon",
  "regex",
@@ -2131,10 +2125,6 @@ dependencies = [
  "tempfile",
  "testcontainers",
  "thiserror 2.0.18",
- "tracing",
- "tracing-core",
- "tracing-opentelemetry",
- "tracing-subscriber",
  "walkdir",
 ]
 

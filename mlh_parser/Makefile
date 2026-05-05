@@ -13,7 +13,7 @@ TARGET_PATH := $(REPO_ROOT)/target/release/$(BINARY_NAME)
 
 
 # Define the Docker image to use for building
-RUST_DOCKER_IMAGE = docker.io/rust:1.94-slim
+RUST_DOCKER_IMAGE = docker.io/rust:1.95-slim
 
 
 # ------------------------------------------------------------------------------

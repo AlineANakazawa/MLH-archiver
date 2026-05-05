@@ -24,19 +24,19 @@ pub mod entities;
 pub mod errors;
 pub mod extractors;
 
-use crate::constants::{BATCH_MAX_RAW_BYTES, BATCH_MAX_RECORDS, PARQUET_FILE_NAME};
+use crate::constants::{BATCH_MAX_RECORDS, PARQUET_FILE_NAME};
 use crate::errors::ParseError;
 pub use entities::{Attribution, ParsedEmail};
 
 use chrono::FixedOffset;
+use rayon::prelude::*;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::thread;
 
 /// Convenience result type used throughout the crate.
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -67,64 +67,33 @@ pub fn start(cfg: &mut crate::config::AppConfig, shutdown_flag: Arc<AtomicBool>)
         return Ok(());
     }
 
-    if cfg.nthreads <= 1 {
-        // if only one thread configured, no need to create a pool
-        for item in lists {
+    if cfg.nthreads < 1 {
+        cfg.nthreads = 1;
+    }
+
+    rayon::scope(|s| {
+        for mail_l in lists {
             if shutdown_flag.load(Ordering::Relaxed) {
                 break;
             }
-            process_mailing_list_wrap(&item, &input_path, &output_path, cfg.fail_on_parsing_error)?;
-        }
-    } else {
-        let work_queue = Arc::new(Mutex::new(lists));
-        let mut handles = Vec::with_capacity(cfg.nthreads as usize);
 
-        for i in 0..cfg.nthreads {
-            log::debug!("Starting thread {i}");
-
-            let queue = Arc::clone(&work_queue);
             let shutdown = Arc::clone(&shutdown_flag);
             let input = input_path.clone();
             let output = output_path.clone();
             let fail_on_err = cfg.fail_on_parsing_error;
 
-            let handle = thread::spawn(move || {
-                loop {
-                    if shutdown.load(Ordering::Relaxed) {
-                        break;
-                    }
+            s.spawn(move |_| {
+                log::debug!("Processing: {mail_l}");
 
-                    let item = {
-                        let mut lock = queue.lock().unwrap();
-                        lock.pop()
-                    };
-
-                    match item {
-                        Some(mail_l) => {
-                            log::debug!("Preparing to read {mail_l}");
-
-                            if let Err(e) =
-                                process_mailing_list_wrap(&mail_l, &input, &output, fail_on_err)
-                            {
-                                log::error!("Thread {} error on {}: {}", i, mail_l, e);
-                                if fail_on_err {
-                                    shutdown.store(true, Ordering::Relaxed);
-                                    break;
-                                }
-                            }
-                        }
-                        None => break,
+                if let Err(e) = process_mailing_list_wrap(&mail_l, &input, &output, fail_on_err) {
+                    log::error!("Error on {}: {}", mail_l, e);
+                    if fail_on_err {
+                        shutdown.store(true, Ordering::Relaxed);
                     }
                 }
             });
-            handles.push(handle);
         }
-
-        // TODO: force thread kill here or try to allow pending writes ?
-        for handle in handles {
-            let _ = handle.join();
-        }
-    }
+    });
 
     if shutdown_flag.load(Ordering::Relaxed) {
         log::info!("Process exited via shutdown signal.");
@@ -148,7 +117,6 @@ fn process_mailing_list_wrap(
         output_dir,
         fail_on_error,
         BATCH_MAX_RECORDS,
-        BATCH_MAX_RAW_BYTES,
     )
     .map_err(|e| Box::<dyn std::error::Error>::from(e.to_string()))
 }
@@ -158,16 +126,14 @@ fn process_mailing_list_wrap(
 /// Reads `.eml` and `.parquet` files from `input_dir/<mailing_list>/`, writes
 /// the output to `output_dir/dataset/list=<mailing_list>/list_data.parquet`.
 ///
-/// Emails are accumulated into batches and flushed when either
-/// `max_records_per_batch` or `max_raw_bytes_per_batch` is reached, keeping
-/// Arrow row groups under the `i32` offset ceiling.
+/// Emails are accumulated into batches and flushed when `max_records_per_batch`
+/// is reached, keeping Arrow row groups under the `i32` offset ceiling.
 pub fn process_mailing_list(
     mailing_list: &str,
     input_dir: &Path,
     output_dir: &Path,
     fail_on_error: bool,
     max_records_per_batch: usize,
-    max_raw_bytes_per_batch: usize,
 ) -> Result<()> {
     let list_input_path = input_dir.join(mailing_list);
 
@@ -195,68 +161,75 @@ pub fn process_mailing_list(
         .map(|tz| chrono::Utc::now().with_timezone(&tz))
         .unwrap_or_else(|| chrono::Utc::now().with_timezone(&FixedOffset::east_opt(0).unwrap()));
 
-    let mut batch_emails: Vec<(ParsedEmail, String)> = Vec::new();
-    let mut batch_raw_body_bytes: usize = 0;
     let mut total_parsed: usize = 0;
     let mut arrow_writer: Option<dataset_writer::DatasetWriter> = None;
     let mut error_writer: Option<BufWriter<fs::File>> = None;
 
     // created the email iterator
-    let emails = email_file_reader::file_iterator(files);
+    let mut emails = email_file_reader::file_iterator(files);
 
-    for row in emails {
-        let row = row?;
-        let content = row.content;
-        let email_id = row.email_id;
+    loop {
+        // Take the next batch of emails from the iterator
+        let batch: Vec<_> = emails.by_ref().take(max_records_per_batch).collect();
 
-        match email_parser::parse_email(content.as_bytes(), now) {
-            Ok(email) => {
-                let raw_len = email.raw_body.len();
-                batch_emails.push((email, email_id));
-                batch_raw_body_bytes += raw_len;
-            }
-            Err(e) => {
-                log::error!("Failed to parse email {}: {}", email_id, e);
-                if fail_on_error {
-                    return Err(Box::new(e));
+        if batch.is_empty() {
+            break;
+        }
+
+        // Process this batch — IndexedParallelIterator preserves input order
+        let mut batch_emails: Vec<(ParsedEmail, String)> = Vec::new();
+
+        let mut rows = Vec::new();
+        for r in batch {
+            rows.push(r?);
+        }
+
+        // into_par_iter().map().collect() preserves order (IndexedParallelIterator)
+        let results: Vec<_> = rows
+            .into_par_iter()
+            .map(|row| {
+                let email_id = row.email_id;
+                let content = row.content;
+                match email_parser::parse_email(content.as_bytes(), now) {
+                    Ok(email) => Ok((email, email_id)),
+                    Err(e) => Err((e, email_id)),
                 }
-                if error_writer.is_none() {
-                    fs::create_dir_all(&error_output_path)?;
-                    let csv_path = error_output_path.join("errors.csv");
-                    let file = fs::File::create(&csv_path)?;
-                    error_writer = Some(BufWriter::new(file));
+            })
+            .collect();
+
+        for result in results {
+            match result {
+                Ok((email, email_id)) => {
+                    batch_emails.push((email, email_id));
                 }
-                let msg_flat = e.to_string().replace('\n', "\\n");
-                let line = csv_escape(&email_id, &msg_flat);
-                writeln!(error_writer.as_mut().unwrap(), "{line}")?;
+                Err((e, email_id)) => {
+                    log::error!("Failed to parse email {}: {}", email_id, e);
+                    if fail_on_error {
+                        return Err(Box::new(e));
+                    }
+                    if error_writer.is_none() {
+                        fs::create_dir_all(&error_output_path)?;
+                        let csv_path = error_output_path.join("errors.csv");
+                        let file = fs::File::create(&csv_path)?;
+                        error_writer = Some(BufWriter::new(file));
+                    }
+                    let msg_flat = e.to_string().replace('\n', "\\n");
+                    let line = csv_escape(&email_id, &msg_flat);
+                    writeln!(error_writer.as_mut().unwrap(), "{line}")?;
+                }
             }
         }
 
-        let should_flush = batch_emails.len() >= max_records_per_batch
-            || batch_raw_body_bytes >= max_raw_bytes_per_batch;
-
-        if should_flush {
+        // Flush the batch
+        if !batch_emails.is_empty() {
             dataset_writer::flush_batch(
                 mailing_list,
                 &parquet_path,
                 &mut batch_emails,
-                &mut batch_raw_body_bytes,
                 &mut total_parsed,
                 &mut arrow_writer,
             )?;
         }
-    }
-
-    // Flush any remaining emails
-    if !batch_emails.is_empty() {
-        dataset_writer::flush_batch(
-            mailing_list,
-            &parquet_path,
-            &mut batch_emails,
-            &mut batch_raw_body_bytes,
-            &mut total_parsed,
-            &mut arrow_writer,
-        )?;
     }
 
     if let Some(writer) = arrow_writer {

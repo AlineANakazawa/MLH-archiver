@@ -33,7 +33,6 @@ pub fn flush_batch(
     mailing_list: &str,
     parquet_path: &Path,
     batch_emails: &mut Vec<(ParsedEmail, String)>,
-    batch_raw_body_bytes: &mut usize,
     total_parsed: &mut usize,
     arrow_writer: &mut Option<DatasetWriter>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -42,10 +41,7 @@ pub fn flush_batch(
     }
 
     let count = batch_emails.len();
-    let bytes = *batch_raw_body_bytes;
-    log::debug!(
-        "parse_mail_at[{mailing_list}]: flushing batch of {count} emails (raw_body_bytes={bytes})",
-    );
+    log::debug!("parse_mail_at[{mailing_list}]: flushing batch of {count} emails",);
 
     let batch = build_record_batch(batch_emails)?;
 
@@ -60,7 +56,6 @@ pub fn flush_batch(
 
     *total_parsed += count;
     batch_emails.clear();
-    *batch_raw_body_bytes = 0;
 
     Ok(())
 }
@@ -75,8 +70,6 @@ pub fn build_record_batch(
     emails: &[(ParsedEmail, String)],
 ) -> Result<RecordBatch, Box<dyn std::error::Error>> {
     let schema = constants::PARQUET_SCHEMA.clone();
-
-    let mut total_raw_body_len: usize = 0;
 
     let mut from_arr = StringBuilder::new();
     let mut to_arr = ListBuilder::new(StringBuilder::new());
@@ -236,17 +229,13 @@ pub fn build_record_batch(
             code_arr.append(!email.code.is_empty());
         }
 
-        log::debug!(
-            "build_record_batch[{idx}] email_id={file_name} raw_body_len={} total_raw_body_len_so_far={total_raw_body_len}",
-            email.raw_body.len()
-        );
-        total_raw_body_len += email.raw_body.len();
+        log::debug!("build_record_batch[{idx}] email_id={file_name}",);
         raw_body_arr.append_value(email.raw_body.as_str());
         file_name_arr.append_value(file_name.as_str());
     }
 
     log::debug!(
-        "build_record_batch: finished building {} columns for {} emails, total raw_body bytes: {total_raw_body_len}",
+        "build_record_batch: finished building {} columns for {} emails",
         schema.fields().len(),
         emails.len()
     );

@@ -37,6 +37,12 @@ fn main() -> Result<()> {
         }
     };
 
+    // Configure the global rayon thread pool
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(app_config.nthreads as usize)
+        .build_global()
+        .unwrap();
+
     // Setup signal handler for Ctrl+C
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     let shutdown_flag_signal = Arc::clone(&shutdown_flag);

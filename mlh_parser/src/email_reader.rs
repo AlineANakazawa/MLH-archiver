@@ -27,8 +27,7 @@ static EMAIL_OBFUSCATED_AT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // --- Helper functions ---
-
-fn hdr_value_to_string(val: &mail_parser::HeaderValue<'_>) -> String {
+fn header_value_to_string(val: &mail_parser::HeaderValue<'_>) -> String {
     match val {
         mail_parser::HeaderValue::Text(s) => s.to_string(),
         mail_parser::HeaderValue::TextList(v) => v.join(", "),
@@ -200,7 +199,7 @@ pub fn get_headers(msg: &Message<'_>) -> HashMap<String, String> {
 
     for header in msg.headers() {
         let key = header.name().to_lowercase();
-        let val_str = hdr_value_to_string(header.value());
+        let val_str = header_value_to_string(header.value());
 
         if key == "from" {
             from_candidates.push(val_str);

@@ -333,9 +333,8 @@ fn test_parse_mail_batched() {
         mailing_list,
         &input_dir,
         &output_dir,
-        true,   // fail_on_error
-        10,     // max_records_per_batch
-        50_000, // max_raw_bytes_per_batch
+        true, // fail_on_error
+        10,   // max_records_per_batch
     )
     .unwrap();
 

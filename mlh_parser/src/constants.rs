@@ -10,8 +10,6 @@ use arrow::datatypes::{DataType, Field, Fields, Schema, TimeUnit};
 /// ceiling (~2.1 GB). These values can be overridden in tests without needing
 /// multi-gigabyte test fixtures.
 pub const BATCH_MAX_RECORDS: usize = 50_000;
-/// Maximum cumulative raw body bytes before flushing to a Parquet row group (400 MB).
-pub const BATCH_MAX_RAW_BYTES: usize = 400 * 1024 * 1024;
 
 /// Internal key used for the signature-trailers block in the parsed email dict.
 pub const SIGNED_BLOCK: &str = "trailers";

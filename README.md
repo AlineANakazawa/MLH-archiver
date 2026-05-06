@@ -19,8 +19,8 @@ This project consists of four main components:
 
 | Component | Description | Language |
 |-----------|-------------|----------|
-| **[MLH Archiver](mlh_archiver/)** | Downloads emails from NNTP servers and stores them as raw RFC 822 files | Rust |
-| **[MLH Parser](mlh_parser/)** | Parses raw emails into structured Parquet datasets with Hive partitioning | Python |
+| **[MLH Archiver](mlh_archiver/)** | Downloads emails from NNTP servers and stores them as raw emails or Parquet (configurable) | Rust |
+| **[MLH Parser](mlh_parser/)** | Parses raw emails into structured Parquet datasets with Hive partitioning | Rust |
 | **[MLH Anonymizer](anonymizer/)** | Pseudo-anonymizes personal identification using SHA1 digests | Python |
 | **[MLH Analysis](analysis/)** | Example analysis scripts for exploring mailing list data | Python |
 
@@ -65,11 +65,12 @@ One of the dependencies is a git submodule. To build correctly
 2. Edit `archiver_config.yaml` with your NNTP server details:
 
    ```yaml
-   nthreads: 2
-   output_dir: "./output"
-   loop_groups: true
+    nthreads: 2
+    output_dir: "./output"
+    loop_groups: true
+    write_mode: "parquet:10000"  # or "raw_email"
 
-   read_lists:
+    read_lists:
       nntp:
        - dev.example.me.lists.gfs2
        - dev.example.me.lists.iommu
@@ -218,10 +219,7 @@ The root [`Makefile`](Makefile) orchestrates all components. Run commands from t
 | `make` or `make all` | Build and run the archiver |
 | `make build` | Build the archiver (Rust) |
 | `make run` | Run the archiver |
-| `make parse` | Run the mailing list parser |
-| `make parse N_PROC=4` | Run parser with 4 parallel processes |
-| `make parse LISTS_TO_PARSE="list1,list2"` | Run parser for specific lists only |
-| `make parse REDO_FAILED_PARSES=true` | Re-parse only previously failed emails |
+| `make parse` | Run the mailing list parser (configure via `parser_config.yaml`) |
 | `make anonymize` | Run the anonymizer |
 | `make analysis` | Run example analyses |
 | `make rebuild` | Rebuild all components |
@@ -244,8 +242,8 @@ The root [`Makefile`](Makefile) orchestrates all components. Run commands from t
 
 | Component | Requirements |
 |-----------|--------------|
-| **Archiver** | Rust/Cargo, or Podman/Docker for containerized builds |
-| **Parser & Anonymizer** | Podman/Podman-compose or Docker/Docker-compose |
+| **Archiver & Parser** | Rust/Cargo, or Podman/Docker for containerized builds |
+| **Anonymizer** | Podman/Podman-compose or Docker/Docker-compose |
 
 ---
 
@@ -273,38 +271,79 @@ See [`containers.mk`](containers.mk) for the detection logic.
 
 ### peek-files
 
-Quick inspection tool for Parquet files and directories located in [`scripts/peek_files.py`](scripts/peek_files.py).
+Quick inspection tool for Parquet files and directories located in [`scripts/peek_parquet/peek_files.py`](scripts/peek_parquet/peek_files.py). Two modes are available:
 
-```bash
-# Using devbox
-devbox run peek <path>
-
-# Using make 
-make peek PEEK_PATH=<path>
-
-# Using uv directly
-uv run scripts/peek_parquet/peek_files.py <path>
-```
-
-**Features:**
-
-- DataFrame preview (shows first 10 rows)
-- Total row count
-- Row count per partition (if hive-partitioned)
-- Schema display
-
-**Examples:**
+**Inspection mode** — Open a file or directory to browse schema, row counts, and data preview:
 
 ```bash
 # Inspect a single parquet file
-devbox run peek-files parser_output/parsed/list=dev.rcpassos.me.lists.gfs2/list_data.parquet
+devbox run peek parser_output/dataset/list=dev.rcpassos.me.lists.gfs2/list_data.parquet
 
-# Inspect a directory (automatically finds all .parquet files)
-devbox run peek-files parser_output/parsed/
-
-# Inspect the raw archiver output
-devbox run peek-files ./output/
+# Inspect a directory (finds all .parquet files under it)
+devbox run peek output/
 ```
+
+**Row lookup mode** (`--select-by-column`) — Search across all parquet files in a directory for rows matching a column value. Each matching row is printed with all its fields:
+
+```bash
+# Look up by email_id (default column)
+devbox run peek output/ --select-by-column 0000000056-e0-5dadd9f0f9884ed3852f090bd05eed898db64966
+
+# Look up by a different column
+devbox run peek output/ --select-by-column "Alice" --column from_name
+```
+
+| Option | Description |
+|--------|-------------|
+| `<PATH>` | Path to a parquet file or directory (inspection mode) |
+| `--select-by-column <VALUE>` | Enable row lookup mode: search for rows matching this value |
+| `--column <NAME>` | Column to search in (default: `email_id`) |
+
+### check-git
+
+CLI tool for browsing and inspecting local public-inbox git repositories located in [`scripts/check_git/`](scripts/check_git/). Provides an interactive TUI and a CLI mode for precise email lookups.
+
+**Email Identifier Format:**
+
+```
+{10-digit-padded}-e{epoch}-{commit_sha}
+```
+
+- **10-digit-padded**: Sequential email number (e.g., `0000000056`)
+- **e{epoch}**: Epoch repository identifier (e.g., `e0`, `eall`)
+- **{commit_sha}**: Full 40-character commit SHA
+
+Example: `0000000056-e0-5dadd9f0f9884ed3852f090bd05eed898db64966`
+
+**Build:**
+
+```bash
+cargo build --release --package check_git
+```
+
+**Usage:**
+
+```bash
+# Interactive mode
+check_git --inbox-dir /path/to/inboxes
+
+# Test fetch by position
+check_git --inbox-dir /path/to/inboxes --test --list my.list.name --article 1
+
+# Look up and print a single email by its formatted identifier
+check_git --inbox-dir /path/to/inboxes --email-id 0000000056-e0-5dadd9f0f9884ed3852f090bd05eed898db64966 --list my.list.name
+```
+
+| Option | Description |
+|--------|-------------|
+| `--inbox-dir <PATH>` | **Required.** Path to public-inbox directories |
+| `--count <N>` | Number of recent emails to preview (default: 5) |
+| `--test` | Run a non-interactive test fetch |
+| `--list <NAME>` | List (folder) name for test or email-id lookup |
+| `--article <N>` | Article position for test fetch (1-indexed) |
+| `--email-id <ID>` | Look up and print a single email by its formatted identifier |
+| `--export-config` | Export configuration to YAML after browsing |
+| `--verbose` | Enable verbose (debug) logging |
 
 ---
 
@@ -348,11 +387,12 @@ See the [Archiver Documentation](mlh_archiver/README.md) for details.
 
 ### Parser Implementation
 
-The parser uses:
+The parser is implemented in Rust and uses:
 
-- **Polars**: Fast DataFrame library for data processing
-- **Hive Partitioning**: Data organized by mailing list name for efficient querying
-- **Error Handling**: Failed parses are saved to `parser_output/<mailing_list>/errors/`
+- **Arrow + Parquet**: Columnar storage format via the Apache Arrow ecosystem
+- **Hive Partitioning**: Data organized by mailing list name (`list=<name>/`) for efficient querying
+- **Error Handling**: Failed parses are saved per mailing list under `<output_dir>/errors/list=<name>/`
+- **Batch Processing**: Large datasets are automatically split into multiple row groups to stay within Arrow's 2 GB offset limits
 
 ### Anonymizer Implementation
 
@@ -372,7 +412,7 @@ The anonymizer applies SHA1 hashing to personally identifiable information (PII)
 - [Analysis Detailed Documentation](analysis/README.md)
 - [Example Configuration](example_archiver_config.yaml)
 - [Architecture Diagram](./docs/fluxogram.svg)
-- [Rust API Documentation](mlh_archiver/target/doc/mlh_archiver/) - Generated via `cargo doc`
+- Generated docs via `cargo doc` (or )
 
 ## License
 

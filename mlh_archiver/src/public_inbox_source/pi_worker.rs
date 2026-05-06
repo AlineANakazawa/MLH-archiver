@@ -7,7 +7,7 @@ use log::{Level, log_enabled};
 use std::collections::HashSet;
 use std::sync::{Arc, atomic::AtomicBool};
 
-use crate::archive_writer::ArchiveWriter;
+use crate::archive_writer::{ArchiveWriter, WriteMode};
 use crate::config::RunModeConfig;
 use std::path::Path;
 
@@ -38,6 +38,7 @@ pub struct PIWorker {
     base_output_path: String,
     /// Flag used to signal the worker to shut down gracefully
     shutdown_flag: Arc<AtomicBool>,
+    write_mode: WriteMode,
 }
 
 impl PIWorker {
@@ -58,12 +59,14 @@ impl PIWorker {
         pi_config: PIConfig,
         base_output_path: String,
         shutdown_flag: Arc<AtomicBool>,
+        write_mode: WriteMode,
     ) -> PIWorker {
         return PIWorker {
             id,
             pi_config,
             base_output_path,
             shutdown_flag,
+            write_mode,
         };
     }
 }
@@ -106,7 +109,7 @@ impl Worker for PIWorker {
             match self.process_inbox(list_name.as_str()) {
                 Ok(mail_count) => {
                     log::info!(
-                        "W{}: completed a task with: {mail_count} emails saved",
+                        "W{}: completed a task with: {mail_count} emails saved from {list_name}",
                         self.id
                     );
                 }
@@ -135,10 +138,11 @@ impl Worker for PIWorker {
     /// * `Err` - If the inbox is not found, the index is out of bounds, or an error occurs
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
     fn read_email_by_index(&self, list_name: String, email_index: usize) -> crate::Result<()> {
-        let writer = ArchiveWriter::new(
+        let mut writer = ArchiveWriter::new(
             Path::new(&self.base_output_path),
             &list_name,
             RunModeConfig::PublicInbox(self.pi_config.clone()),
+            self.write_mode,
         );
 
         let inboxes = find_public_inboxes(std::path::Path::new(&self.pi_config.import_directory))?;
@@ -180,7 +184,7 @@ impl Worker for PIWorker {
                 let commit = repo.find_commit(commit_id)?;
                 let (commit_hash, raw_email) = extract_email_from_commit(&repo, &commit)?;
                 let email_id = format_email_id(email_index, &epoch.epoch_name, &commit_hash);
-                writer.archive_email(&email_id, [raw_email.as_str()])?;
+                writer.archive_email(&email_id, raw_email.lines())?;
                 log::info!(
                     "W{}: Successfully fetched email {} from {} (epoch {})",
                     self.id,
@@ -228,10 +232,11 @@ impl PIWorker {
             list_name
         );
 
-        let writer = ArchiveWriter::new(
+        let mut writer = ArchiveWriter::new(
             Path::new(&self.base_output_path),
             list_name,
             RunModeConfig::PublicInbox(self.pi_config.clone()),
+            self.write_mode,
         );
 
         // Check for progress to determine where to resume from
@@ -252,7 +257,7 @@ impl PIWorker {
                 git_dir: inbox.git_dir.clone(),
             }]
         } else {
-            epochs
+            epochs.clone()
         };
 
         let mut emails_processed = 0;
@@ -306,6 +311,38 @@ impl PIWorker {
         }
 
         // Process each epoch in order
+        //
+        // When resuming, global_position holds the total number of emails
+        // already processed (1-indexed).  We need to know how many commits
+        // fall before the first epoch we'll actually visit (i.e. epochs
+        // filtered out by skip_until_epoch) so we can detect whether each
+        // remaining epoch has been fully processed.
+        let commits_before_first_epoch: usize = {
+            let mut before = 0usize;
+            if let Some(ref skip_epoch) = skip_until_epoch {
+                for ep in &epochs {
+                    // Stop once we reach the epoch we begin resuming from.
+                    if ep.epoch_name == *skip_epoch
+                        || (skip_epoch != "all"
+                            && ep
+                                .epoch_name
+                                .parse::<usize>()
+                                .ok()
+                                .zip(skip_epoch.parse::<usize>().ok())
+                                .is_some_and(|(a, b)| a >= b))
+                    {
+                        break;
+                    }
+                    if let Ok(r) = git2::Repository::open_bare(&ep.git_dir) {
+                        before += count_commits(&r).unwrap_or(0);
+                    }
+                }
+            }
+            before
+        };
+
+        let mut cumulative_emails_total: usize = commits_before_first_epoch;
+
         for epoch in &epochs_to_use {
             // Check for shutdown request
             if is_shutdown_requested(&self.shutdown_flag) {
@@ -319,11 +356,29 @@ impl PIWorker {
             }
 
             let repo = git2::Repository::open_bare(&epoch.git_dir)?;
+            let epoch_commits = count_commits(&repo)?;
+            cumulative_emails_total += epoch_commits;
+
+            // If every commit in this epoch falls at or before the resume
+            // point, skip the epoch entirely.  This prevents re-processing
+            // already-fetched emails when the service restarts after a
+            // complete run.
+            if global_position >= cumulative_emails_total {
+                skip_until_sha = None;
+                log::info!(
+                    "W{}: Skipping already-processed epoch {} ({} commits, cumulative={})",
+                    self.id,
+                    epoch.epoch_name,
+                    epoch_commits,
+                    cumulative_emails_total
+                );
+                continue;
+            }
 
             let result = self.process_epoch(
                 &repo,
                 epoch,
-                &writer,
+                &mut writer,
                 &email_range_positions,
                 &skip_until_sha,
                 global_position,
@@ -370,7 +425,7 @@ impl PIWorker {
         &self,
         repo: &git2::Repository,
         epoch: &EpochRepo,
-        writer: &ArchiveWriter,
+        writer: &mut ArchiveWriter,
         email_range_positions: &Option<HashSet<usize>>,
         skip_until_sha: &Option<String>,
         global_position: usize,

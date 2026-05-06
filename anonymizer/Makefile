@@ -24,8 +24,8 @@ test:
 
 .PHONY: run
 run:
-	@if [ ! -d "../parser_output/parsed" ] || [ -z "$$(ls ../parser_output/parsed 2>/dev/null)" ]; then \
-		echo "==> Error: '../parser_output/parsed' directory is missing or empty."; \
+	@if [ ! -d "../parser_output/dataset" ] || [ -z "$$(ls ../parser_output/dataset 2>/dev/null)" ]; then \
+		echo "==> Error: '../parser_output/dataset' directory is missing or empty."; \
 		echo "==> Please run the parser first to generate the dataset."; \
 		exit 1; \
 	else \
@@ -36,12 +36,30 @@ run:
 
 .PHONY: rebuild
 rebuild:
+	GIT_COMMIT=$$(git rev-parse HEAD) \
+	GIT_DATE=$$(git log -1 --format=%ci) \
 	$(COMPOSE) build --no-cache
 
 
 .PHONY: debug
 debug:
-	INPUT_DIR="../parser_output/parsed" OUTPUT_DIR="../anonymizer_output" uv run src/main.py
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "==> Found uv toolchain, running natively..."; \
+		INPUT_DIR="../parser_output/dataset" OUTPUT_DIR="../anonymizer_output" uv run src/main.py; \
+	else \
+		echo "==> uv toolchain not found, running with Docker (Image: $(PYTHON_DOCKER_IMAGE))..."; \
+		$(CONTAINER) run --rm \
+			-it -u $(id -u):$(id -g) \
+			--network=host \
+			-e INPUT_DIR=/data/dataset \
+			-e OUTPUT_DIR=/data/output \
+			-v ../parser_output/dataset:/data/dataset:z \
+			-v ../anonymizer_output:/data/output:z \
+			-v .:/usr/src/app:z \
+			-w /usr/src/app \
+			$(PYTHON_DOCKER_IMAGE) \
+			bash -c "uv sync --locked && uv run src/main.py"; \
+	fi
 
 
 .PHONY: clean

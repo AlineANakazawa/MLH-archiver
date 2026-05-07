@@ -93,7 +93,7 @@ pub static PARQUET_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
                 DataType::Struct(trailer_fields),
                 true,
             ))),
-            true,
+            false, // not nullable
         ),
         Field::new(
             "code",

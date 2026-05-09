@@ -2,7 +2,7 @@
 include ../containers.mk
 
 # Define the Docker image to use for building
-PYTHON_DOCKER_IMAGE = ghcr.io/astral-sh/uv:python3.14-trixie-slim
+PYTHON_DOCKER_IMAGE="ghcr.io/astral-sh/uv:python3.14-trixie-slim"
 
 
 .PHONY: test
@@ -29,16 +29,26 @@ run:
 		echo "==> Please run the parser first to generate the dataset."; \
 		exit 1; \
 	else \
-		echo "==> Running anonymizer..."; \
-		$(COMPOSE) up && $(COMPOSE) down -v; \
+		if command -v uv >/dev/null 2>&1; then \
+			echo "==> Found uv toolchain, running natively..."; \
+			INPUT_DIR="../parser_output/dataset" OUTPUT_DIR="../anonymizer_output" uv run src/main.py; \
+		else \
+			echo "==> uv toolchain not found, running with Docker (Image: $(PYTHON_DOCKER_IMAGE))..."; \
+			$(CONTAINER) run --rm \
+				-it -u $$(id -u):$$(id -g) \
+				--network=host \
+				-e INPUT_DIR=/data/dataset \
+				-e OUTPUT_DIR=/data/output \
+				-e GIT_COMMIT=$${GIT_COMMIT:-unknown} \
+				-e GIT_DATE=$${GIT_DATE:-unknown} \
+				-v ../parser_output/dataset:/data/dataset:z \
+				-v ../anonymizer_output:/data/output:z \
+				-v .:/usr/src/app:z \
+				-w /usr/src/app \
+				$(PYTHON_DOCKER_IMAGE) \
+				bash -c "uv sync --locked && uv run src/main.py"; \
+		fi \
 	fi
-
-
-.PHONY: rebuild
-rebuild:
-	GIT_COMMIT=$$(git rev-parse HEAD) \
-	GIT_DATE=$$(git log -1 --format=%ci) \
-	$(COMPOSE) build --no-cache
 
 
 .PHONY: debug
@@ -51,6 +61,7 @@ debug:
 		$(CONTAINER) run --rm \
 			-it -u $(id -u):$(id -g) \
 			--network=host \
+			-e DEBUG=true \
 			-e INPUT_DIR=/data/dataset \
 			-e OUTPUT_DIR=/data/output \
 			-v ../parser_output/dataset:/data/dataset:z \
@@ -61,6 +72,9 @@ debug:
 			bash -c "uv sync --locked && uv run src/main.py"; \
 	fi
 
+.PHONY: rebuild
+rebuild:
+	$(CONTAINER) pull $(PYTHON_DOCKER_IMAGE)
 
 .PHONY: clean
 clean:

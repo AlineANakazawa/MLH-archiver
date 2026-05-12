@@ -28,7 +28,8 @@ cargo-coverage:archiver:
   <<: *rust-docker-base
   stage: test
   rules:
-    - changes:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
         - mlh_archiver/**/*
   script:
     - cargo install cargo-llvm-cov
@@ -66,7 +67,8 @@ cargo-coverage:parser:
   <<: *rust-base
   stage: test
   rules:
-    - changes:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
         - mlh_parser/**/*
   script:
     - cargo install cargo-llvm-cov

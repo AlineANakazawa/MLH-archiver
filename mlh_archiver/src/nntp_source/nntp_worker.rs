@@ -133,8 +133,9 @@ impl Worker for NNTPWorker {
             // check if reconnection is needed before trying to connect
             if self.needs_reconnection.get() {
                 log::debug!("W{}: will attempt a reconnection soon", self.id);
-                // wait a minute before trying to reconnect, checking shutdown flag
-                let reconnect_wait = Duration::from_secs(60);
+                // wait before trying to reconnect, scaled by request_interval, checking shutdown flag
+                let reconnect_wait =
+                    Duration::from_secs(self.nntp_config.request_interval.saturating_mul(60));
                 let check_interval = Duration::from_secs(1);
                 let mut elapsed = Duration::ZERO;
                 while elapsed < reconnect_wait {
@@ -182,7 +183,9 @@ impl Worker for NNTPWorker {
                             err
                         );
                         // if connection error was returned, sleep a bit, checking shutdown
-                        let sleep_duration = Duration::from_secs(10);
+                        let sleep_duration = Duration::from_secs(
+                            self.nntp_config.request_interval.saturating_mul(10),
+                        );
                         let check_interval = Duration::from_secs(1);
                         let mut elapsed = Duration::ZERO;
                         while elapsed < sleep_duration {

@@ -218,7 +218,8 @@ pub fn build_record_batch(
                     .append_value(&attr.identification);
                 struct_builder.append(true);
             }
-            trailers_arr.append(!email.trailers.is_empty());
+            // Non nullable. Use empty lists instead
+            trailers_arr.append(true);
         }
 
         // code

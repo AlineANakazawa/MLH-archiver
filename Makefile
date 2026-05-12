@@ -1,11 +1,56 @@
 # By default, 'make' will run the 'all' target
 .PHONY: all
-all: rebuild run
+all: create-output-dirs rebuild run
 
 
-# run all targets in order
+# create output directories for all pipeline steps
+.PHONY: create-output-dirs
+create-output-dirs:
+	$(MAKE) -C mlh_archiver create-output-dir
+	$(MAKE) -C mlh_parser create-output-dir
+	$(MAKE) -C anonymizer create-output-dir
+	$(MAKE) -C analysis create-output-dir
+
+
+# run all targets in order, with timing
 .PHONY: run
-run: run-archiver parse anonymize analysis
+run:
+	@echo "==> Starting sequential pipeline..."; \
+	total=0; \
+	\
+	start=$$(date +%s); \
+	$(MAKE) -C mlh_archiver run; \
+	end=$$(date +%s); \
+	archiver_dur=$$((end - start)); \
+	total=$$((total + archiver_dur)); \
+	\
+	start=$$(date +%s); \
+	$(MAKE) -C mlh_parser run; \
+	end=$$(date +%s); \
+	parser_dur=$$((end - start)); \
+	total=$$((total + parser_dur)); \
+	\
+	start=$$(date +%s); \
+	$(MAKE) -C anonymizer run; \
+	end=$$(date +%s); \
+	anonymizer_dur=$$((end - start)); \
+	total=$$((total + anonymizer_dur)); \
+	\
+	start=$$(date +%s); \
+	$(MAKE) -C analysis run; \
+	end=$$(date +%s); \
+	analysis_dur=$$((end - start)); \
+	total=$$((total + analysis_dur)); \
+	\
+	echo "=============================="; \
+	echo "  Pipeline timing summary:"; \
+	echo "  archiver:    $${archiver_dur}s"; \
+	echo "  parser:      $${parser_dur}s"; \
+	echo "  anonymizer:  $${anonymizer_dur}s"; \
+	echo "  analysis:    $${analysis_dur}s"; \
+	echo "  ----------------------------"; \
+	echo "  Total:       $${total}s"; \
+	echo "=============================="
 
 # ------------------------------------------------------------------------------
 # APPLICATION TARGETS
@@ -19,20 +64,16 @@ build-archiver:
 run-archiver:
 	$(MAKE) -C mlh_archiver run
 
-
-.PHONY: debug-archiver
-debug-archiver:
-	$(MAKE) -C mlh_archiver debug
-
-.PHONY: parse
-parse:
+.PHONY: run-parser
+run-parser:
 	$(MAKE) -C mlh_parser run
-.PHONY: anonymize
-anonymize:
+
+.PHONY: run-anonymizer
+run-anonymizer:
 	$(MAKE) -C anonymizer run
 
-.PHONY: analysis
-analysis:
+.PHONY: run-analysis
+run-analysis:
 	$(MAKE) -C analysis run
 
 # ------------------------------------------------------------------------------
@@ -60,6 +101,10 @@ rebuild-analysis:
 # ------------------------------------------------------------------------------
 # DEBUG TARGETS
 # ------------------------------------------------------------------------------
+
+.PHONY: debug-archiver
+debug-archiver:
+	$(MAKE) -C mlh_archiver debug
 
 .PHONY: debug-parser
 debug-parser:
@@ -91,6 +136,11 @@ test-anonymizer:
 # ------------------------------------------------------------------------------
 # UTILITY TARGETS
 # ------------------------------------------------------------------------------
+
+
+.PHONY: doc
+doc:
+	cargo doc --open
 
 .PHONY: clean
 clean:

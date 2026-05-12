@@ -6,7 +6,7 @@ authors = [{ name = "Rafael Passos", email = "rafael@rcpassos.me" }]
 requires-python = ">=3.14"
 
 dependencies = [
-  "polars~=1.39",
+  "polars~=1.40",
 ]
 
 [project.scripts]

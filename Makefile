@@ -1,8 +1,8 @@
 # Variables for the analysis script
 LISTS_OF_INTEREST ?=
-RUN_VALIDATION_SCRIPTS ?=
+ANALYSIS_SCRIPT ?=
 export LISTS_OF_INTEREST
-export RUN_VALIDATION_SCRIPTS
+export ANALYSIS_SCRIPT
 # end of variables for the analysis script
 
 # By default, 'make' will run the 'all' target

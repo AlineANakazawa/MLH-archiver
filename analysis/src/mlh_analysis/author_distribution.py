@@ -6,10 +6,10 @@ import glob
 def main(dataset_dir, output_dir):
     # pass list names split by ","
     # read all lists by default
-    AUTHOR_EMAIL = os.environ.get("AUTHOR_EMAIL", "")
-    if not AUTHOR_EMAIL:
-        print("AUTHOR_EMAIL not defined")
-        AUTHOR_EMAIL = input("Enter AUTHOR_EMAIL: ")
+    AUTHOR_IDENTITY = os.environ.get("AUTHOR_IDENTITY", "")
+    if not AUTHOR_IDENTITY:
+        print("AUTHOR_IDENTITY not defined")
+        AUTHOR_IDENTITY = input("Enter AUTHOR_IDENTITY (name and/or email as it appears in 'From':\n ")
 
     LISTS_OF_INTEREST = os.environ.get("LISTS_OF_INTEREST", "").split(",")
     LISTS_OF_INTEREST = [li for li in LISTS_OF_INTEREST if li]
@@ -29,7 +29,7 @@ def main(dataset_dir, output_dir):
     for mailing_list in LISTS_OF_INTEREST:
         df = pl.read_parquet(f"{dataset_dir}/list={mailing_list}/*.parquet")
         df = (
-            df.filter(pl.col("from").str.contains(AUTHOR_EMAIL))
+            df.filter(pl.col("from").str.contains(AUTHOR_IDENTITY))
             .with_columns(pl.col("date").dt.year().alias("year"))
             .group_by("year")
             .agg(pl.len().alias("emails"))

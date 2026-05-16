@@ -8,12 +8,6 @@ This component contains example analysis scripts that demonstrate how to query a
 
 ![Analysis Diagram](/docs/analysis.avif)
 
-## Features
-
-- **Polars-Based**: Efficient data processing with the Polars DataFrame library
-- **Visualization**: Seaborn integration for statistical visualizations
-- **Reproducible**: Containerized execution for consistent results
-
 ## Prerequisites
 
 ### Container Runtime (Required)
@@ -52,15 +46,14 @@ The analysis scripts expect the anonymized dataset from the MLH Anonymizer.
 
 ```bash
 # Using Make (runs all analyses)
-make analysis
+make -C analysis run
 
-# Using Devbox
-devbox run analysis
+# Run a single analysis by name
+make -C analysis run ANALYSIS_SCRIPT=unique_authors
+make -C analysis run ANALYSIS_SCRIPT=list_comparison LISTS_OF_INTEREST=amd-gfx,intel-gfx
 
 # Debug mode (native execution)
-make debug-analysis
-# or
-INPUT_DIR="../output/anonymizer" uv run src/make_analysis.py
+INPUT_DIR="../output/parser/dataset,../output/anonymizer" OUTPUT_DIR="results" uv run src/main.py
 ```
 
 ### Input/Output Directories
@@ -72,23 +65,45 @@ INPUT_DIR="../output/anonymizer" uv run src/make_analysis.py
 
 ## Available Analyses
 
-### make_analysis.py
+### main.py
 
-Main analysis script that generates various statistics and visualizations from the mailing list data.
+Orchestrator that runs all analysis scripts. Supports selecting a single script via the `ANALYSIS_SCRIPT` environment variable.
 
 ```bash
-# Run the main analysis
-uv run src/make_analysis.py
+# Run all analyses
+uv run src/main.py
+
+# Run a single analysis
+ANALYSIS_SCRIPT=unique_authors uv run src/main.py
 ```
+
+### list_comparison.py
+
+Compares mailing list activity and cross-list interactions. Supports `LISTS_OF_INTEREST` to narrow the selection.
+
+### list_sizes.py
+
+Computes the size (email count) of each mailing list.
 
 ### unique_authors.py
 
-Analyzes unique authors/contributors across mailing lists.
+Analyzes unique authors/contributors across mailing lists using the anonymized ID map.
 
-```bash
-# Run author analysis
-uv run src/unique_authors.py
-```
+### date_analysis.py
+
+Generates date-related statistics and distributions.
+
+### patch_missing.py
+
+Identifies patch emails with missing code blocks. Supports `LISTS_OF_INTEREST`.
+
+### date_missing.py
+
+Finds emails with missing or malformed date headers. Supports `LISTS_OF_INTEREST`.
+
+### author_distribution.py
+
+Shows an author's email activity distribution across mailing lists and years. Requires `AUTHOR_IDENTITY` and optionally `LISTS_OF_INTEREST`.
 
 ## Output
 
@@ -106,9 +121,25 @@ analysis/results/
 
 Configuration is done via environment variables:
 
+### General
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INPUT_DIR` | `/input` | Directory containing anonymized Parquet files |
+| `INPUT_DIR` | `/input` | Comma-separated directories containing Parquet files (parser output and/or anonymizer output) |
+| `OUTPUT_DIR` | `results` | Directory for analysis output |
+
+### Script Selection
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANALYSIS_SCRIPT` | *(empty)* | Run a single analysis by name instead of all. Valid names: `list_comparison`, `list_sizes`, `unique_authors`, `date_analysis`, `patch_missing`, `date_missing`, `author_distribution` |
+
+### Per-Script Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LISTS_OF_INTEREST` | *(discover all)* | Comma-separated mailing list names to analyze (e.g. `amd-gfx,intel-gfx`). Used by: `list_comparison`, `patch_missing`, `date_missing`, `author_distribution` |
+| `AUTHOR_IDENTITY` | *(prompted)* | Author email to filter by. Used by: `author_distribution` |
 
 ### Docker Compose Configuration
 
@@ -127,37 +158,20 @@ volumes:
 For development and debugging, run scripts directly:
 
 ```bash
-# Set input directory
-export INPUT_DIR="../output/anonymizer"
+# Set input and output directories
+export INPUT_DIR="../output/parser/dataset,../output/anonymizer"
+export OUTPUT_DIR="results"
 
-# Run analysis
-uv run src/make_analysis.py
+# Run all analyses
+uv run src/main.py
 
-# Or with inline variable
-INPUT_DIR="../output/anonymizer" uv run src/make_analysis.py
+# Run a single analysis
+ANALYSIS_SCRIPT=date_analysis uv run src/main.py
+
+# With per-script variables
+LISTS_OF_INTEREST="amd-gfx,rust-for-linux" ANALYSIS_SCRIPT=list_comparison uv run src/main.py
 ```
 
-### Project Structure
-
-```
-analysis/
-├── src/
-│   ├── make_analysis.py    # Main analysis script
-│   └── unique_authors.py   # Author analysis
-├── results/                # Analysis output
-├── Containerfile           # Docker/Podman image
-├── compose.yaml            # Container orchestration
-├── pyproject.toml          # Python project configuration
-├── uv.lock                 # Locked dependencies
-├── .python-version         # Python version specification
-└── Makefile                # Build automation
-```
-
-## Dependencies
-
-### Runtime
-- `polars` (>=1.36.1) - Fast DataFrame library
-- `seaborn` (>=0.13.2) - Statistical visualization
 
 ### Development
 - Python 3.12+
@@ -200,22 +214,6 @@ plt.title("Daily Mailing List Activity")
 plt.savefig("results/activity_over_time.png")
 ```
 
-## Integration with Other Components
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  MLH Archiver   │ ──► │   MLH Parser    │ ──► │   Anonymizer    │ ──► │    Analysis     │
-│  (raw emails)   │     │  (Parquet DS)   │     │ (anonymized DS) │     │  (insights)     │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-Full pipeline:
-```bash
-make run        # Archive emails
-make parse      # Parse to Parquet
-make anonymize  # Anonymize data
-make analysis   # Run analysis
-```
 
 ## Cleaning Up
 

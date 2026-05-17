@@ -3,6 +3,7 @@ name = "analysis"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "datafusion>=53.0.0",
     "polars~=1.40",
     "seaborn>=0.13.2",
 ]

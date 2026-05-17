@@ -105,6 +105,14 @@ Finds emails with missing or malformed date headers. Supports `LISTS_OF_INTEREST
 
 Shows an author's email activity distribution across mailing lists and years. Requires `AUTHOR_IDENTITY` and optionally `LISTS_OF_INTEREST`.
 
+### sql_querier.py
+
+Interactive SQL query interface using [Apache DataFusion](https://datafusion.apache.org/user-guide/sql/index.html). Registers all available Parquet tables, displays schemas, then prompts for a SQL query. Results are written to a CSV file in the output directory. This is a non-default script — only runs when explicitly selected via `ANALYSIS_SCRIPT=sql_querier`.
+
+```bash
+ANALYSIS_SCRIPT=sql_querier uv run src/main.py
+```
+
 ## Output
 
 Analysis results are stored in the `results/` directory:
@@ -132,7 +140,7 @@ Configuration is done via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANALYSIS_SCRIPT` | *(empty)* | Run a single analysis by name instead of all. Valid names: `list_comparison`, `list_sizes`, `unique_authors`, `date_analysis`, `patch_missing`, `date_missing`, `author_distribution` |
+| `ANALYSIS_SCRIPT` | *(empty)* | Run a single analysis by name instead of all. Valid names: `list_comparison`, `list_sizes`, `unique_authors`, `date_analysis`, `patch_missing`, `date_missing`, `author_distribution`†, `sql_querier`†. († non-default, only runs when explicitly selected) |
 
 ### Per-Script Variables
 

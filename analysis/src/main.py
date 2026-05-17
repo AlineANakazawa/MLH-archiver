@@ -5,6 +5,7 @@ from mlh_analysis import date_analysis
 from mlh_analysis import patch_missing
 from mlh_analysis import author_distribution
 from mlh_analysis import date_missing
+from mlh_analysis import sql_querier
 from mlh_analysis.inputs import resolve_inputs
 
 import os
@@ -26,10 +27,16 @@ def main():
         "date_analysis": lambda: date_analysis.main(inputs["dataset_dir"], output_dir),
         "patch_missing": lambda: patch_missing.main(inputs["dataset_dir"], output_dir),
         "date_missing": lambda: date_missing.main(inputs["dataset_dir"], output_dir),
+        # these scripts below will not run by default
         "author_distribution": lambda: author_distribution.main(
             inputs["dataset_dir"], output_dir
         ),
+        "sql_querier": lambda: sql_querier.main(
+            inputs, output_dir
+        ),
     }
+
+    non_default_scipts = ["author_distribution", "sql_querier"]
 
     if analysis_script:
         if analysis_script in scripts.keys():
@@ -43,6 +50,8 @@ def main():
         return
 
     for name in scripts.keys():
+        if name in non_default_scipts:
+            continue
         print(f"Starting {name}...\n")
         scripts[name]()
         print()

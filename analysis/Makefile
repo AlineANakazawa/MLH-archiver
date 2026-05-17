@@ -11,7 +11,8 @@ ANALYSIS_SCRIPT ?=
 include ../containers.mk
 
 # Define the Docker image to use for building
-PYTHON_DOCKER_IMAGE="ghcr.io/astral-sh/uv:python3.14-trixie-slim"
+ANALYSIS_IMAGE := mlh_analysis
+IMAGE_EXISTS := $(shell $(CONTAINER) image inspect $(ANALYSIS_IMAGE) >/dev/null 2>&1 && echo yes || echo no)
 
 
 .PHONY: test
@@ -20,15 +21,13 @@ test:
 		echo "==> Found Python Testing toolchain, running natively..."; \
 		nox; \
 	else \
-		echo "==> Python Testing toolchain not found, running with $(CONTAINER) (Image: $(PYTHON_DOCKER_IMAGE))..."; \
+		echo "==> Python Testing toolchain not found, running with $(CONTAINER) (Image: $(ANALYSIS_IMAGE))..."; \
 		$(CONTAINER) run --rm \
 			--network=host \
-			-e UV_CACHE_DIR=/tmp/.cache/uv \
-			-e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
 			-v $(CURDIR):/usr/src/app \
 			-w /usr/src/app \
-			$(PYTHON_DOCKER_IMAGE) \
-			bash -c "uv sync --locked && uvx nox"; \
+			$(ANALYSIS_IMAGE) \
+			uvx nox; \
 	fi
 
 .PHONY: create-output-dir
@@ -46,7 +45,11 @@ run: create-output-dir
 			echo "==> Found uv toolchain, running natively..."; \
 			INPUT_DIR="../output/parser/dataset,../output/anonymizer/" OUTPUT_DIR="../output/analysis/" LISTS_OF_INTEREST="$(LISTS_OF_INTEREST)" ANALYSIS_SCRIPT="$(ANALYSIS_SCRIPT)" uv run src/main.py; \
 		else \
-			echo "==> uv toolchain not found, running with $(CONTAINER) (Image: $(PYTHON_DOCKER_IMAGE))..."; \
+			echo "==> uv toolchain not found, running with $(CONTAINER) (Image: $(ANALYSIS_IMAGE))..."; \
+			if [ "$(IMAGE_EXISTS)" = "no" ]; then \
+				echo "==> Image $(ANALYSIS_IMAGE) not found, building..."; \
+				$(MAKE) rebuild; \
+			fi; \
 			$(CONTAINER) run --rm -it \
 				--network=host \
 				-e INPUT_DIR=/data/dataset,/data/anonymized \
@@ -55,22 +58,20 @@ run: create-output-dir
 				-e ANALYSIS_SCRIPT="$(ANALYSIS_SCRIPT)" \
 				-e GIT_COMMIT=$${GIT_COMMIT:-unknown} \
 				-e GIT_DATE=$${GIT_DATE:-unknown} \
-				-e UV_CACHE_DIR=/tmp/.cache/uv \
-				-e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
 				-v $(PARSER_OUTPUT_DIR):/data/dataset \
 				-v $(ANONYMIZER_OUTPUT_DIR):/data/anonymized \
 				-v $(ANALYSIS_OUTPUT_DIR):/output \
 				-v $(CURDIR):/usr/src/app \
 				-w /usr/src/app \
-				$(PYTHON_DOCKER_IMAGE) \
-				bash -c "uv sync --locked && uv run src/main.py"; \
+				$(ANALYSIS_IMAGE) \
+				uv run src/main.py; \
 		fi \
 	fi
 
 
 .PHONY: rebuild
 rebuild:
-	$(CONTAINER) pull $(PYTHON_DOCKER_IMAGE)
+	$(CONTAINER) build -t $(ANALYSIS_IMAGE) .
 
 .PHONY: clean
 clean:

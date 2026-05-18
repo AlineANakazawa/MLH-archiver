@@ -14,10 +14,13 @@ static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     let rfc2822_loose = r"(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),\s+)?(0[1-9]|[1-2]?[0-9]|3[01])\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+([0-9]{2,4})\s+([0-9]{2}:[0-9]{2}(?::[0-9]{2})?)";
     let rfc1123 = r"\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} \w{3}";
     let rfc1036 = r"\w+?, \d{2}-\w{3}-\d{2} \d{2}:\d{2}:\d{2} \w{3}";
-    let ctime = r"\w{3} \w{3} \d+? \d{2}:\d{2}:\d{2} \d{4}";
+    let ctime = r"\w{3}\s+\w{3}\s+\d+?\s+\d{2}:\d{2}:\d{2}\s+\d{4}";
+    // rfc3339_loose allows for 2,3,4 digit yerars
+    let rfc3339_loose =
+        r"((?:\d{2,4}-\d{2}-\d{2})[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+\-]\d{2}:\d{2})?)";
     Regex::new(&format!(
-        "(?:{})|(?:{})|(?:{})|(?:{})|(?:{})",
-        rfc2822, rfc2822_loose, rfc1123, rfc1036, ctime
+        "(?:{})|(?:{})|(?:{})|(?:{})|(?:{})|(?:{})",
+        rfc2822, rfc2822_loose, rfc1123, rfc1036, ctime, rfc3339_loose
     ))
     .unwrap()
 });
@@ -44,6 +47,8 @@ pub fn parse_date_tentative_raw(date: &str) -> Option<DateTime<FixedOffset>> {
     };
 
     // Try RFC 2822 format first
+    // This rust implemented parser handles "millenium dates",
+    // These will be fixed here, not in `fix_millennium_date`
     if let Ok(dt) = DateTime::parse_from_rfc2822(&cleaned) {
         if has_valid_utc_offset(&dt) {
             return Some(dt);
@@ -57,6 +62,23 @@ pub fn parse_date_tentative_raw(date: &str) -> Option<DateTime<FixedOffset>> {
             return Some(dt);
         }
         return None;
+    }
+
+    // Try RFC 3339 with zero-padded year (handles 2-3 digit millennium years)
+    if let Some(first_dash) = cleaned.find('-') {
+        let year_part = &cleaned[..first_dash];
+        if !year_part.is_empty()
+            && year_part.len() < 4
+            && year_part.chars().all(|c| c.is_ascii_digit())
+        {
+            let padded = format!("{:0>4}{}", year_part, &cleaned[first_dash..]);
+            if let Ok(dt) = DateTime::parse_from_rfc3339(&padded) {
+                if has_valid_utc_offset(&dt) {
+                    return Some(dt);
+                }
+                return None;
+            }
+        }
     }
 
     last_effort_date_finder(&found)
@@ -133,25 +155,35 @@ pub fn check_date_issues(date_obj: &DateTime<FixedOffset>, now: DateTime<FixedOf
 
 /// Corrects dates where the year was accidentally stored modulo 100.
 ///
-/// For example, `2011-09-01` stored as `0111-09-01` is corrected by adding
-/// 1900 to the year, provided the adjusted year is not in the future.
+/// The original implementation served all encodings, but the rust chrono
+/// crate handles this for rfc2822.
+/// This function is here to handle unlikely other cases of this in other encodings.
+///
+/// rules from chrono:
+/// - two-digit year < 50 should be interpreted by adding 2000.
+///   two-digit year >= 50 or three-digit year should be interpreted
+///   by adding 1900. note that four-or-more-digit years less than 1000
+///   are *never* affected by this rule.
 pub fn fix_millennium_date(
     date_obj: DateTime<FixedOffset>,
     now: DateTime<FixedOffset>,
 ) -> DateTime<FixedOffset> {
     let year = date_obj.year();
     let max_year = now.year();
-    let adjusted = year + 1900;
-    if year < 1900
-        && adjusted <= max_year
+    if year > 1000 {
+        return date_obj;
+    }
+
+    let adjusted: i32 = if year < 50 { year + 2000 } else { year + 1900 };
+
+    if adjusted <= max_year
         && let Some(new_date) = NaiveDate::from_ymd_opt(adjusted, date_obj.month(), date_obj.day())
     {
         let time = date_obj.time();
         let naive = new_date.and_time(time);
-        let utc = Utc.from_utc_datetime(&naive);
         let offset = date_obj.offset();
-        if let Some(fixed) = FixedOffset::east_opt(offset.local_minus_utc()) {
-            return utc.with_timezone(&fixed);
+        if let Some(fixed) = offset.from_local_datetime(&naive).single() {
+            return fixed;
         }
     }
     date_obj
@@ -227,5 +259,102 @@ pub fn process_date(email_dict: &mut HashMap<String, String>, now: DateTime<Fixe
         email_dict.insert("date".to_string(), safe_options[0].to_rfc3339());
     } else {
         email_dict.insert("date".to_string(), String::new());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_date_in_string_matches() {
+        let cases = vec![
+            // === rfc2822 (strict, with timezone) ===
+            (
+                "Mon, 03 Jan 1978 18:27:37 +0000",
+                Some("Mon, 03 Jan 1978 18:27:37 +0000"),
+            ),
+            ("03 Jan 1978 18:27:37 UT", Some("03 Jan 1978 18:27:37 UT")),
+            (
+                "Sat, 31 Dec 2022 23:59:59 -0500",
+                Some("Sat, 31 Dec 2022 23:59:59 -0500"),
+            ),
+            (
+                "Sun, 01 Jan 2023 00:00:00 +0530",
+                Some("Sun, 01 Jan 2023 00:00:00 +0530"),
+            ),
+            // single-digit day
+            (
+                "Mon, 3 Jan 1978 18:27:37 +0000",
+                Some("Mon, 3 Jan 1978 18:27:37 +0000"),
+            ),
+            ("3 Jan 1978 18:27:37 GMT", Some("3 Jan 1978 18:27:37 GMT")),
+            // military timezone
+            ("01 Jul 2021 12:00:00 A", Some("01 Jul 2021 12:00:00 A")),
+            // no seconds
+            (
+                "Mon, 15 Mar 2021 10:30 UT",
+                Some("Mon, 15 Mar 2021 10:30 UT"),
+            ),
+            // === rfc2822_loose (no timezone, 2-4 digit years) ===
+            ("Mon, 3 Jan 78 18:27:37", Some("Mon, 3 Jan 78 18:27:37")),
+            ("3 Jan 2000 18:27:37", Some("3 Jan 2000 18:27:37")),
+            ("Mon, 3 Jan 0100 18:27:37", Some("Mon, 3 Jan 0100 18:27:37")),
+            ("Mon, 3 Jan 100 18:27:37", Some("Mon, 3 Jan 100 18:27:37")),
+            ("Tue, 15 Feb 99 20:15:00", Some("Tue, 15 Feb 99 20:15:00")),
+            // no seconds
+            ("Fri, 1 Jun 22 14:30", Some("Fri, 1 Jun 22 14:30")),
+            // single-digit day, no weekday
+            ("1 Dec 2022 09:15:42", Some("1 Dec 2022 09:15:42")),
+            // === rfc1123 ===
+            (
+                "Sun, 06 Nov 1994 08:49:37 GMT",
+                Some("Sun, 06 Nov 1994 08:49:37 GMT"),
+            ),
+            (
+                "Wed, 21 Oct 2015 07:28:00 EST",
+                Some("Wed, 21 Oct 2015 07:28:00 EST"),
+            ),
+            // === rfc1036 ===
+            (
+                "Sunday, 06-Nov-94 08:49:37 GMT",
+                Some("Sunday, 06-Nov-94 08:49:37 GMT"),
+            ),
+            (
+                "Wed, 01-Jan-20 12:00:00 PST",
+                Some("Wed, 01-Jan-20 12:00:00 PST"),
+            ),
+            // === ctime ===
+            ("Sun Nov  6 08:49:37 1994", Some("Sun Nov  6 08:49:37 1994")),
+            ("Mon Jan 15 14:30:00 2023", Some("Mon Jan 15 14:30:00 2023")),
+            ("Sat Mar  1 00:00:00 2020", Some("Sat Mar  1 00:00:00 2020")),
+            // === embedded in larger text ===
+            (
+                "Received: from mail.example.com; Mon, 03 Jan 1978 18:27:37 +0000",
+                Some("Mon, 03 Jan 1978 18:27:37 +0000"),
+            ),
+            (
+                "Date: Sun, 06 Nov 1994 08:49:37 GMT\nSubject: Hello",
+                Some("Sun, 06 Nov 1994 08:49:37 GMT"),
+            ),
+            (
+                "preceding text Sun Nov  6 08:49:37 1994 trailing",
+                Some("Sun Nov  6 08:49:37 1994"),
+            ),
+            (
+                "Blablabal 2025-12-05T11:13:54-06:00 date",
+                Some("2025-12-05T11:13:54-06:00"),
+            ),
+            // === non-matching ===
+            ("not a date at all", None),
+            ("", None),
+            ("12345", None),
+        ];
+
+        for (input, expected) in &cases {
+            let result = find_date_in_string(input);
+            let result_ref: Option<&str> = result.as_deref();
+            assert_eq!(result_ref, *expected, "find_date_in_string({:?})", input);
+        }
     }
 }

@@ -9,6 +9,7 @@ use std::fs;
 #[test]
 fn test_millennium_dates() {
     let millennium_cases = vec![
+        // These rfc2822 style dates are handled by chrono
         // 2 digit year
         ("Mon, 3 Jan 78 18:27:37", "Mon, 3 Jan 1978 18:27:37"),
         ("Mon, 3 Jan 99 18:27:37", "Mon, 3 Jan 1999 18:27:37"),
@@ -26,6 +27,21 @@ fn test_millennium_dates() {
             "Tue,  4 Nov 101 22:14:47 +0000 (UTC)",
             "Tue,  4 Nov 2001 22:14:47 +0000 (UTC)",
         ),
+        // ISO 8601 / RFC 3339 format with millennium dates
+        // 4-digit zero-padded year
+        ("0103-09-29T10:34:51-04:00", "2003-09-29T10:34:51-04:00"),
+        ("0121-01-15T08:30:00Z", "2021-01-15T08:30:00Z"),
+        ("0105-03-14 14:30:00-05:00", "2005-03-14 14:30:00-05:00"),
+        // 2-digit year
+        ("99-12-31T23:59:59Z", "1999-12-31T23:59:59Z"),
+        ("78-06-01T12:00:00+01:00", "1978-06-01T12:00:00+01:00"),
+        // 3-digit year
+        ("101-06-15T16:30:00-07:00", "2001-06-15T16:30:00-07:00"),
+        // space separator (not T)
+        ("0102-08-22 10:00:00Z", "2002-08-22 10:00:00Z"),
+        ("0103-09-29T10:34:51-04:00", "2003-09-29T10:34:51-04:00"),
+        ("0121-01-15T08:30:00Z", "2021-01-15T08:30:00Z"),
+        ("0105-03-14 14:30:00-05:00", "2005-03-14 14:30:00-05:00"),
     ];
 
     let now = DateTime::from_timestamp(1734748800, 0)
@@ -46,6 +62,12 @@ fn test_correct_email() {
     let directory = "./date_cases/";
     let email_files = list_files_with_extension(directory, ".eml");
 
+    // TODO: this should reflrect the maximum real date in tests.
+    // I will only cause problemas if new cases are introduced with dates in the future
+    // relative to this one:
+    // Mon May 18 2026 00:02:36 GMT+0000
+    let now = DateTime::from_timestamp(1779062556, 0).unwrap().into();
+
     for email_file in &email_files {
         let fixtures = map_to_file_extensions(email_file, &[".date.expected"]);
         if fixtures.is_empty() {
@@ -58,6 +80,7 @@ fn test_correct_email() {
         }
 
         let mail_bytes = fs::read(email_file).unwrap();
+
         let expected_date_str = parse_date_file(date_file);
         if expected_date_str.is_empty() {
             continue;
@@ -67,7 +90,6 @@ fn test_correct_email() {
         let msg = decode_mail(&mail_bytes).unwrap();
         let mut headers = get_headers(&msg);
 
-        let now = DateTime::from_timestamp(1734748800, 0).unwrap().into();
         process_date(&mut headers, now);
 
         if let (Some(expected), Some(actual_str)) = (expected_date, headers.get("date"))

@@ -126,14 +126,15 @@ The Parquet dataset includes the following columns:
 | `to` | list\<string\> | Recipients (To field) |
 | `cc` | list\<string\> | CC recipients |
 | `subject` | string | Email subject line |
-| `date` | datetime | dataset email date (corrected) |
-| `client-date` | list\<string\> | Raw date from email client (may be incorrect) |
+| `date` | datetime | Earlyest date (corrected) found for an email |
+| `client-date` | list\<string\> | User client reported date (Contains malformed dates) |
 | `in-reply-to` | string | In-Reply-To header |
 | `references` | list\<string\> | References headers |
 | `x-mailing-list` | string | Mailing list name |
 | `trailers` | list\<struct\<attribution: string, identification: string\>\> | Signature block attribution and identification |
 | `code` | list\<string\> | Code snippets extracted from email |
 | `raw_body` | string | Complete raw email body |
+| `list` (partition) | string | Name of the List. Only present in partition aware readers |
 
 ## Configuration
 
@@ -145,7 +146,7 @@ parser settings — only `RUST_LOG` controls log verbosity.
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
-| `nthreads` | integer | **Yes** | — | Number of worker threads. `<= 1` runs sequentially; `2+` spawns a thread pool |
+| `nthreads` | integer | **Yes** | — | Number of worker threads. Higher values increase CPU/Memory usage. |
 | `input_dir_path` | string | **Yes** | — | Root directory containing mailing list subdirectories from the archiver |
 | `output_dir_path` | string | **Yes** | — | Root directory for parsed output (dataset, errors, lineage) |
 | `fail_on_parsing_error` | boolean | **Yes** | — | If `true`, abort on first parse error. If `false`, log the error and continue |

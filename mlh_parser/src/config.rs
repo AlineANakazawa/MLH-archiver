@@ -19,7 +19,7 @@ pub struct Opts {
 /// [`example_parser_config.yaml`](https://github.com/linux-duks/MLH-archiver/blob/main/example_parser_config.yaml).
 #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone)]
 pub struct AppConfig {
-    /// Number of worker threads. `<= 1` runs sequentially; `2+` spawns a thread pool.
+    /// Number of worker threads.
     pub nthreads: u8,
     /// Root directory containing mailing list subdirectories from the archiver.
     pub input_dir_path: String,

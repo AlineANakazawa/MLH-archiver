@@ -7,7 +7,9 @@
 		"uv@latest",
 		"git@latest",
 		"rustup@latest",
-		"libgit2@latest"
+		"libgit2@latest",
+        "ruff@latest",
+        "prek@latest"
 	],
 	"env": {
 		"PROJECT_DIR": "$PWD",
@@ -16,6 +18,7 @@
 	"shell": {
 		"init_hook": [
 			"echo 'Welcome to devbox!' > /dev/null",
+            "prek install",
 			"rustup default stable",
 			"cargo fetch"
 		],

@@ -1,9 +1,10 @@
 {
-	"name": "MLH-archiver Development Container",
-	"build": {
-		"dockerfile": "./Containerfile",
-		"context": ".."
-	},
-	"customizations": {},
-	"remoteUser": "devbox"
+  "name": "MLH-archiver Development Container",
+  "build": {
+    "dockerfile": "./Containerfile",
+    "context": ".."
+  },
+  "customizations": {},
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "remoteUser": "devbox"
 }

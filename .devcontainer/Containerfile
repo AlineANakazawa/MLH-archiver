@@ -14,8 +14,10 @@ RUN apt update && \
               make \
               ripgrep
 
+# python UV
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# prek pre-commit framework
+COPY --from=ghcr.io/j178/prek:v0.4.0 /prek /usr/local/bin/prek
 
 # Installing your devbox project
 WORKDIR /code
-

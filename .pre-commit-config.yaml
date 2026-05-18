@@ -6,8 +6,6 @@ repos:
         args: [--markdown-linebreak-ext=md]
         exclude:
           glob:
-            - "mlh_parser/tests/date_cases/**"
-            - "mlh_parser/tests/complete_cases/**"
             - "mlh_parser/tests/synthetic/**"
             - "**/fixtures/**"
             - "**/test_public_inbox/**"

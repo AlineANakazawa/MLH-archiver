@@ -59,7 +59,7 @@ fn test_millennium_dates() {
 
 #[test]
 fn test_correct_email() {
-    let directory = "./date_cases/";
+    let directory = "./fixtures/";
     let email_files = list_files_with_extension(directory, ".eml");
 
     // TODO: this should reflrect the maximum real date in tests.

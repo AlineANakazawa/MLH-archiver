@@ -7,7 +7,7 @@ use std::fs;
 
 #[test]
 fn test_complete_parser() {
-    let directory = "./complete_cases/";
+    let directory = "./fixtures/";
     let email_files = list_files_with_extension(directory, ".eml");
     let now = DateTime::from_timestamp(1734748800, 0).unwrap().into();
 

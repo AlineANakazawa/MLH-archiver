@@ -8,7 +8,7 @@ use std::fs;
 
 #[test]
 fn test_body_parser() {
-    let directory = "./complete_cases/";
+    let directory = "./fixtures/";
     let email_files = list_files_with_extension(directory, ".eml");
 
     for email_file in &email_files {
@@ -38,7 +38,7 @@ fn test_body_parser() {
 
 #[test]
 fn test_header_parser() {
-    let directory = "./complete_cases/";
+    let directory = "./fixtures/";
     let email_files = list_files_with_extension(directory, ".eml");
 
     for email_file in &email_files {

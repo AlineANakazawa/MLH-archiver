@@ -1,27 +1,15 @@
 mod common;
 
-use common::{
-    list_files_with_extension, map_to_file_extensions, parse_body_file, parse_headers_file,
-};
+use common::{parse_body_file, parse_headers_file};
 use mlh_parser::email_reader::{decode_mail, get_body, get_headers};
 use std::fs;
 
 #[test]
 fn test_body_parser() {
     let directory = "./fixtures/";
-    let email_files = list_files_with_extension(directory, ".eml");
+    let pairs = common::list_fixture_pairs(directory, ".body.expected");
 
-    for email_file in &email_files {
-        let fixtures = map_to_file_extensions(email_file, &[".body.expected"]);
-        if fixtures.is_empty() {
-            continue;
-        }
-        let body_file = &fixtures[0];
-
-        if !body_file.exists() {
-            continue;
-        }
-
+    for (body_file, email_file) in &pairs {
         let mail_bytes = fs::read(email_file).unwrap();
         let expected_body = parse_body_file(body_file);
 
@@ -39,19 +27,9 @@ fn test_body_parser() {
 #[test]
 fn test_header_parser() {
     let directory = "./fixtures/";
-    let email_files = list_files_with_extension(directory, ".eml");
+    let pairs = common::list_fixture_pairs(directory, ".headers.expected");
 
-    for email_file in &email_files {
-        let fixtures = map_to_file_extensions(email_file, &[".headers.expected"]);
-        if fixtures.is_empty() {
-            continue;
-        }
-        let headers_file = &fixtures[0];
-
-        if !headers_file.exists() {
-            continue;
-        }
-
+    for (headers_file, email_file) in &pairs {
         let mail_bytes = fs::read(email_file).unwrap();
         let expected_headers = parse_headers_file(headers_file);
 

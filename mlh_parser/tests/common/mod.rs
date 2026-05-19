@@ -62,6 +62,36 @@ pub fn parse_body_file(body_file: &Path) -> String {
     }
 }
 
+pub fn list_fixture_pairs(directory: &str, expected_ext: &str) -> Vec<(PathBuf, PathBuf)> {
+    let expected_files = list_files_with_extension(directory, expected_ext);
+    expected_files
+        .into_iter()
+        .filter_map(|expected_file| {
+            let eml_file = expected_to_eml(&expected_file, expected_ext);
+            eml_file.exists().then_some((expected_file, eml_file))
+        })
+        .collect()
+}
+
+fn expected_to_eml(expected_path: &Path, expected_ext: &str) -> PathBuf {
+    let suffix = expected_ext.trim_start_matches('.');
+    let file_name = expected_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let base = match file_name.strip_suffix(suffix) {
+        Some(b) => b.to_string(),
+        None => expected_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
+    };
+    let parent = expected_path.parent().unwrap_or(Path::new(""));
+    parent.join(format!("{}.eml", base))
+}
+
 pub fn parse_headers_file(headers_file: &Path) -> HashMap<String, String> {
     let mut headers = HashMap::new();
     let content = match fs::read_to_string(headers_file) {

@@ -1,7 +1,7 @@
 mod common;
 
 use chrono::DateTime;
-use common::{list_files_with_extension, map_to_file_extensions, parse_date_file};
+use common::parse_date_file;
 use mlh_parser::date_parser::{parse_date_tentative_raw, process_date};
 use mlh_parser::email_reader::{decode_mail, get_headers};
 use std::fs;
@@ -58,27 +58,17 @@ fn test_millennium_dates() {
 }
 
 #[test]
-fn test_correct_email() {
+fn test_email_dates() {
     let directory = "./fixtures/";
-    let email_files = list_files_with_extension(directory, ".eml");
+    let pairs = common::list_fixture_pairs(directory, ".date.expected");
 
-    // TODO: this should reflrect the maximum real date in tests.
-    // I will only cause problemas if new cases are introduced with dates in the future
+    // TODO: this should reflect the maximum real date in tests.
+    // I will only cause problems if new cases are introduced with dates in the future
     // relative to this one:
     // Mon May 18 2026 00:02:36 GMT+0000
     let now = DateTime::from_timestamp(1779062556, 0).unwrap().into();
 
-    for email_file in &email_files {
-        let fixtures = map_to_file_extensions(email_file, &[".date.expected"]);
-        if fixtures.is_empty() {
-            continue;
-        }
-        let date_file = &fixtures[0];
-
-        if !date_file.exists() {
-            continue;
-        }
-
+    for (date_file, email_file) in &pairs {
         let mail_bytes = fs::read(email_file).unwrap();
 
         let expected_date_str = parse_date_file(date_file);

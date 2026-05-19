@@ -6,7 +6,6 @@ use crate::constants;
 use arrow::array::*;
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
-use chrono::DateTime;
 use parquet::arrow::ArrowWriter;
 use parquet::errors::Result;
 use parquet::file::properties::WriterProperties;
@@ -99,110 +98,77 @@ pub fn build_record_batch(
     let mut file_name_arr = StringBuilder::new();
 
     for (idx, (email, file_name)) in emails.iter().enumerate() {
-        from_arr.append_value(email.headers.get("from").map(|s| s.as_str()).unwrap_or(""));
+        // from
+        {
+            from_arr.append_value(&email.from);
+        }
 
         // to
         {
-            let to_list: Vec<&str> = email
-                .headers
-                .get("to")
-                .map(|s| s.as_str())
-                .unwrap_or("")
-                .split("||")
-                .filter(|x| !x.is_empty())
-                .collect();
-            for item in &to_list {
-                to_arr.values().append_value(*item);
+            for item in &email.to {
+                to_arr.values().append_value(item);
             }
-            to_arr.append(!to_list.is_empty());
+            to_arr.append(!email.to.is_empty());
         }
 
         // cc
         {
-            let cc_list: Vec<&str> = email
-                .headers
-                .get("cc")
-                .map(|s| s.as_str())
-                .unwrap_or("")
-                .split("||")
-                .filter(|x| !x.is_empty())
-                .collect();
-            for item in &cc_list {
-                cc_arr.values().append_value(*item);
+            for item in &email.cc {
+                cc_arr.values().append_value(item);
             }
-            cc_arr.append(!cc_list.is_empty());
+            cc_arr.append(!email.cc.is_empty());
         }
 
-        subject_arr.append_value(
-            email
-                .headers
-                .get("subject")
-                .map(|s| s.as_str())
-                .unwrap_or(""),
-        );
+        // subject
+        {
+            subject_arr.append_value(&email.subject);
+        }
 
         // date
-        let date_str = email.headers.get("date").cloned().unwrap_or_default();
-        if let Ok(dt) = DateTime::parse_from_rfc3339(&date_str) {
-            date_arr.append_value(dt.timestamp_micros());
-        } else {
-            date_arr.append_null();
+        {
+            if let Some(dt) = email.date {
+                // TODO : enforce it must be UTC
+                date_arr.append_value(dt.timestamp_micros());
+            } else {
+                date_arr.append_null();
+            }
         }
 
         // client-date
         {
-            let cds: Vec<&str> = email
-                .headers
-                .get("client-date")
-                .map(|s| s.as_str())
-                .unwrap_or("")
-                .split("||")
-                .filter(|x| !x.is_empty())
-                .collect();
-            for item in &cds {
-                client_date_arr.values().append_value(*item);
-            }
-            client_date_arr.append(!cds.is_empty());
+            client_date_arr.values().append_value(&email.client_date);
+            client_date_arr.append(!email.client_date.is_empty());
         }
 
-        message_id_arr.append_value(
-            email
-                .headers
-                .get("message-id")
-                .map(|s| s.as_str())
-                .unwrap_or(""),
-        );
-        in_reply_to_arr.append_value(
-            email
-                .headers
-                .get("in-reply-to")
-                .map(|s| s.as_str())
-                .unwrap_or(""),
-        );
+        // message_id
+        {
+            message_id_arr.append_value(&email.message_id);
+        }
 
+        // in_reply_to
+        {
+            if let Some(irt) = &email.in_reply_to {
+                in_reply_to_arr.append_value(irt);
+            } else {
+                in_reply_to_arr.append_null();
+            }
+        }
         // references
         {
-            let refs: Vec<&str> = email
-                .headers
-                .get("references")
-                .map(|s| s.as_str())
-                .unwrap_or("")
-                .split("||")
-                .filter(|x| !x.is_empty())
-                .collect();
-            for item in &refs {
-                references_arr.values().append_value(*item);
+            for item in &email.references {
+                references_arr.values().append_value(item);
             }
-            references_arr.append(!refs.is_empty());
+            references_arr.append(!email.references.is_empty());
         }
 
-        x_mailing_list_arr.append_value(
-            email
-                .headers
-                .get("x-mailing-list")
-                .map(|s| s.as_str())
-                .unwrap_or(""),
-        );
+        // x-mailing-list
+        {
+            if let Some(xml) = &email.x_mailing_list {
+                x_mailing_list_arr.append_value(xml);
+            } else {
+                x_mailing_list_arr.append_null();
+            }
+        }
 
         // trailers - struct list
         {

@@ -39,6 +39,7 @@ fn test_complete_parser() {
                         trailer.attribution
                     );
                 }
+                assert!(r.date.is_some(), "Date missing for email {:?}", email_file);
             }
             Err(e) => {
                 eprintln!("Failed to parse {:?}: {}", email_file, e);

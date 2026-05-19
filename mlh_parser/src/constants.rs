@@ -14,20 +14,6 @@ pub const BATCH_MAX_RECORDS: usize = 50_000;
 /// Internal key used for the signature-trailers block in the parsed email dict.
 pub const SIGNED_BLOCK: &str = "trailers";
 
-/// Columns that are guaranteed to hold a single string value (not a list).
-///
-/// Used by the post-processing step in `email_parser` to ensure missing
-/// columns are populated with empty strings.
-pub const SINGLE_VALUED_COLS: &[&str] = &[
-    "from",
-    "subject",
-    "date",
-    "message-id",
-    "in-reply-to",
-    "x-mailing-list",
-    "raw_body",
-];
-
 /// Full set of keys recognized in a parsed email headers map.
 pub const KEYS_MASK: &[&str] = &[
     "from",

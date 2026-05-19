@@ -2,8 +2,8 @@ mod common;
 
 use chrono::DateTime;
 use common::parse_date_file;
-use mlh_parser::date_parser::{parse_date_tentative_raw, process_date};
-use mlh_parser::email_reader::{decode_mail, get_headers};
+use mlh_parser::date_parser::parse_date_string;
+use mlh_parser::email_parser::parse_email;
 use std::fs;
 
 #[test]
@@ -49,9 +49,8 @@ fn test_millennium_dates() {
         .into();
 
     for (found_str, expected_str) in millennium_cases {
-        let found_date = parse_date_tentative_raw(found_str).expect("Parse should not be None");
-        let expected_date =
-            parse_date_tentative_raw(expected_str).expect("Parse should not be None");
+        let found_date = parse_date_string(found_str).expect("Parse should not be None");
+        let expected_date = parse_date_string(expected_str).expect("Parse should not be None");
         let fixed = mlh_parser::date_parser::fix_millennium_date(found_date, now);
         assert_eq!(fixed, expected_date, "Failed for {}", found_str);
     }
@@ -79,17 +78,23 @@ fn test_email_dates() {
         if expected_date_str.is_empty() {
             continue;
         }
-        let expected_date = parse_date_tentative_raw(&expected_date_str);
+        let expected_date =
+            parse_date_string(&expected_date_str).expect("Expected Date should parse");
 
-        let msg = decode_mail(&mail_bytes).unwrap();
-        let mut headers = get_headers(&msg);
+        let mail = parse_email(&mail_bytes, now).expect("Parse should not fail");
 
-        process_date(&mut headers, now);
+        let acctual_date = mail.date;
+        assert!(
+            acctual_date.is_some(),
+            "Parser date missing {:?}",
+            email_file
+        );
 
-        if let (Some(expected), Some(actual_str)) = (expected_date, headers.get("date"))
-            && let Ok(actual) = DateTime::parse_from_rfc3339(actual_str)
-        {
-            assert_eq!(actual, expected, "Date mismatch for {:?}", email_file);
-        }
+        assert_eq!(
+            acctual_date.expect("Date should be present"),
+            expected_date,
+            "Date mismatch for {:?}",
+            email_file
+        );
     }
 }

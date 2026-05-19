@@ -6,7 +6,6 @@
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use regex::Regex;
-use std::collections::HashMap;
 use std::sync::LazyLock;
 
 static DATE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -32,7 +31,7 @@ fn find_date_in_string(text: &str) -> Option<String> {
 /// Attempts to parse `date` with RFC 2822, RFC 3339, and fallback heuristics.
 ///
 /// Returns `None` if no recognizable date could be extracted.
-pub fn parse_date_tentative_raw(date: &str) -> Option<DateTime<FixedOffset>> {
+pub fn parse_date_string(date: &str) -> Option<DateTime<FixedOffset>> {
     if date.is_empty() {
         return None;
     }
@@ -187,83 +186,6 @@ pub fn fix_millennium_date(
         }
     }
     date_obj
-}
-
-/// Searches `Received` and `X-Received` headers for fallback date values.
-pub fn find_other_date_entries(email_dict: &HashMap<String, String>) -> Vec<DateTime<FixedOffset>> {
-    let mut value_list = Vec::new();
-    for header in &["received", "x-received"] {
-        if let Some(values_str) = email_dict.get(*header) {
-            for m in DATE_REGEX.find_iter(values_str) {
-                let date_str = m.as_str();
-                if let Some(parsed) = parse_date_tentative_raw(date_str) {
-                    value_list.push(parsed);
-                }
-            }
-        }
-    }
-    value_list
-}
-
-/// Processes the `date` and `client-date` entries in an email header map.
-///
-/// Selects the best date from the available options, applying millennium
-/// correction and `Received`-header fallback in that order. The result is
-/// stored back into `email_dict["date"]` as RFC 3339 and the raw client
-/// dates in `email_dict["client-date"]` as `||`-delimited strings.
-pub fn process_date(email_dict: &mut HashMap<String, String>, now: DateTime<FixedOffset>) {
-    let raw_date = email_dict
-        .get("date")
-        .cloned()
-        .map(|d| vec![d])
-        .unwrap_or_default();
-
-    let client_date: Vec<String> = raw_date.iter().filter(|d| !d.is_empty()).cloned().collect();
-    email_dict.insert("client-date".to_string(), client_date.join("||"));
-
-    let mut date_options: Vec<DateTime<FixedOffset>> = Vec::new();
-    let mut had_millennium = false;
-    for date in &client_date {
-        if !date.is_empty() {
-            let trimmed = date.trim();
-            if let Some(date_str) = find_date_in_string(trimmed)
-                && let Some(dt) = parse_date_tentative_raw(&date_str)
-            {
-                if is_date_too_old(&dt) {
-                    had_millennium = true;
-                    date_options.push(fix_millennium_date(dt, now));
-                } else {
-                    date_options.push(dt);
-                }
-            }
-        }
-    }
-
-    // Collect dates from Received/X-Received headers
-    let other_entries = find_other_date_entries(email_dict);
-
-    // When the Date header had a millennium issue, prefer Received headers
-    // since the Date header may have other malformations beyond the year.
-    let all_dates = if had_millennium && !other_entries.is_empty() {
-        other_entries
-    } else {
-        let mut dates = date_options;
-        dates.extend(other_entries);
-        dates
-    };
-
-    // Filter out future dates
-    let mut safe_options: Vec<DateTime<FixedOffset>> = all_dates
-        .into_iter()
-        .filter(|d| !is_date_in_future(d, now))
-        .collect();
-
-    if !safe_options.is_empty() {
-        safe_options.sort();
-        email_dict.insert("date".to_string(), safe_options[0].to_rfc3339());
-    } else {
-        email_dict.insert("date".to_string(), String::new());
-    }
 }
 
 #[cfg(test)]

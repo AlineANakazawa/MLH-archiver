@@ -19,6 +19,7 @@ pub mod dataset_writer;
 pub mod date_parser;
 pub mod email_file_reader;
 pub mod email_parser;
+pub mod address_parser;
 pub mod email_reader;
 pub mod entities;
 pub mod errors;

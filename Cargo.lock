@@ -966,6 +966,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dateparser"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa7c3b5f25f753dcbf8f77a535166e08cba151529b6df9be966984053a68cf39"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "regex",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2125,6 +2136,7 @@ dependencies = [
  "clap",
  "config",
  "ctrlc",
+ "dateparser",
  "env_logger",
  "glob",
  "log",

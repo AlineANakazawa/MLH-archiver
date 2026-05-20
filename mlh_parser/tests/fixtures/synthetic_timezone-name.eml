@@ -1,6 +1,37 @@
 From: Dedra Meero <dedra.meero@coruscant.isb>
+To: Dedra Meero <dedra.meero@coruscant.isb>
 Subject: Eastern time zone test
 Date: Wed, 15 Jan 2025 08:30:00 EST
+Date: Wed, 15 Jan 2025 08:30:15 EST
+Date: Wed, 15 Jan 2025 09:30:30 EDT
+Date: Wed, 15 Jan 2025 07:30:45 CST
+Date: Wed, 15 Jan 2025 08:31:00 CDT
+Date: Wed, 15 Jan 2025 06:31:15 MST
+Date: Wed, 15 Jan 2025 07:31:30 MDT
+Date: Wed, 15 Jan 2025 05:31:45 PST
+Date: Wed, 15 Jan 2025 06:32:00 PDT
+Date: Wed, 15 Jan 2025 13:32:15 GMT
+Date: Wed, 15 Jan 2025 13:32:30 UT
+Date: Wed, 15 Jan 2025 13:32:45 +0000
+Date: Wed, 15 Jan 2025 14:33:00 +0100
+Date: Wed, 15 Jan 2025 15:33:15 +0200
+Date: Wed, 15 Jan 2025 16:33:30 +0300
+Date: Wed, 15 Jan 2025 17:33:45 +0400
+Date: Wed, 15 Jan 2025 18:34:00 +0500
+Date: Wed, 15 Jan 2025 13:34:15 -0000
+Date: Wed, 15 Jan 2025 08:34:30 -0500
+Date: Wed, 15 Jan 2025 07:34:45 -0600
+Date: 2025-01-15T13:36:45+00:00
+Date: 2025-01-15 13:37:00+00:00
+Date: 2025-01-15T13:37:15Z
+Date: Wed Jan 15 13:37:32 2025
+Date: Wed Jan 15 14:37:45 +0100 2025
+Date: Wednesday, 15-Jan-2025 14:38:00 EST
+Date: 15-Jan-2025 08:38:15 -0500
+Date: 15 Jan 2025 08:38:33 -0500
+Date: 15 Jan 2025 13:38:45
+Date: 二零二六年六月十三日
+Date: 今日は 2025 年2月17日です
 Message-ID: <synthetic-011@coruscant.isb>
 Xref: localhost test.groups.synthetic:11
 Newsgroups: test.groups.synthetic
@@ -12,3 +43,4 @@ EST should be parsed as UTC-5, resulting in 13:30:00 UTC.
 --
 Dedra Meero
 ISB Supervisor
+

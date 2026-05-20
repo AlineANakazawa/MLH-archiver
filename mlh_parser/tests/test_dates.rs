@@ -78,8 +78,16 @@ fn test_email_dates() {
         if expected_date_str.is_empty() {
             continue;
         }
-        let expected_date =
-            parse_date_string(&expected_date_str).expect("Expected Date should parse");
+
+        let expected_date = parse_date_string(&expected_date_str);
+
+        assert!(
+            expected_date.is_some(),
+            "expected_date fate failed to parse {:?}",
+            email_file
+        );
+
+        let expected_date = expected_date.expect("Expected Date should parse");
 
         let mail = parse_email(&mail_bytes, now).expect("Parse should not fail");
 

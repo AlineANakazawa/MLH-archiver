@@ -1,0 +1,3132 @@
+From: "Zhang, Yanmin" <yanmin_zhang@linux.intel.com>
+Subject: [PATCH V3] perf & kvm: Enhance perf to collect KVM guest os
+ statistics from host side
+Date: Wed, 14 Apr 2010 09:06:15 +0000 (UTC)
+Message-ID: <1902387910.2078.435.camel@ymzhang.sh.intel.com>
+Mime-Version: 1.0
+Content-Type: text/plain; charset="ISO-8859-1"
+Content-Transfer-Encoding: 7bit
+Cc: Peter Zijlstra <a.p.zijlstra@chello.nl>,
+	Avi Kivity <avi@redhat.com>,
+	Sheng Yang <sheng@linux.intel.com>,
+	linux-kernel@vger.kernel.org, kvm@vger.kernel.org,
+	Marcelo Tosatti <mtosatti@redhat.com>,
+	oerg Roedel <joro@8bytes.org>,
+	Jes Sorensen <Jes.Sorensen@redhat.com>,
+	Gleb Natapov <gleb@redhat.com>,
+	Zachary Amsden <zamsden@redhat.com>, zhiteng.huang@intel.com,
+	tim.c.chen@intel.com, Arnaldo Carvalho de Melo <acme@infradead.org>
+To: Ingo Molnar <mingo@elte.hu>
+Return-path: <linux-kernel-owner@vger.kernel.org>
+Date: Sun, 14 Apr 2030 17:05:10 +0800
+Sender: linux-kernel-owner@vger.kernel.org
+List-Id: kvm.vger.kernel.org
+
+Here is the new patch of V3 against tip/master of April 13th
+if anyone wants to try it.
+
+ChangeLog V3:
+	1) Add --guestmount=/dir/to/all/guestos parameter. Admin mounts guest os
+	root directories under /dir/to/all/guestos by sshfs. For example, I start
+	2 guest os. The one's pid is 8888 and the other's is 9999.
+	#mkdir ~/guestmount; cd ~/guestmount
+	#sshfs -o allow_other,direct_io -p 5551 localhost:/ 8888/
+	#sshfs -o allow_other,direct_io -p 5552 localhost:/ 9999/
+	#perf kvm --host --guest --guestmount=~/guestmount top
+
+	The old --guestkallsyms and --guestmodules are still supported as default
+	guest os symbol parsing.
+
+	2) Add guest os buildid support.
+	3) Add sub command 'perf kvm buildid-list'.
+	4) Delete sub command 'perf kvm stat', because our current implementation
+	doesn't transfer guest/host requirement to kernel, and kernel always
+	collects both host and guest statistics. So regular 'perf stat' is ok.
+	5) Fix a couple of perf bugs.
+	6) We still have no support on command with parameter 'any' as current KVM
+	just uses process id to identify specific guest os instance. Users could
+	uses parameter -p to collect specific guest os instance statistics.
+
+ChangeLog V2:
+        1) Based on Avi's suggestion, I moved callback functions
+        to generic code area. So the kernel part of the patch is
+        clearer.
+        2) Add 'perf kvm stat'.
+
+
+From: Zhang, Yanmin <yanmin_zhang@linux.intel.com>
+
+Based on the discussion in KVM community, I worked out the patch to support
+perf to collect guest os statistics from host side. This patch is implemented
+with Ingo, Peter and some other guys' kind help. Yang Sheng pointed out a
+critical bug and provided good suggestions with other guys. I really appreciate
+their kind help.
+
+The patch adds new sub command kvm to perf.
+
+  perf kvm top
+  perf kvm record
+  perf kvm report
+  perf kvm diff
+  perf kvm buildid-list
+
+The new perf could profile guest os kernel except guest os user space, but it
+could summarize guest os user space utilization per guest os.
+
+Below are some examples.
+1) perf kvm top
+[root@lkp-ne01 norm]# perf kvm --host --guest --guestkallsyms=/home/ymzhang/guest/kallsyms
+--guestmodules=/home/ymzhang/guest/modules top
+
+--------------------------------------------------------------------------------------------------------------------------
+   PerfTop:   16010 irqs/sec  kernel:59.1% us: 1.5% guest kernel:31.9% guest us: 7.5% exact:  0.0% [1000Hz cycles],  (all, 16 CPUs)
+--------------------------------------------------------------------------------------------------------------------------
+
+             samples  pcnt function                  DSO
+             _______ _____ _________________________ _______________________
+
+            38770.00 20.4% __ticket_spin_lock        [guest.kernel.kallsyms]
+            22560.00 11.9% ftrace_likely_update      [kernel.kallsyms]
+             9208.00  4.8% __lock_acquire            [kernel.kallsyms]
+             5473.00  2.9% trace_hardirqs_off_caller [kernel.kallsyms]
+             5222.00  2.7% copy_user_generic_string  [guest.kernel.kallsyms]
+             4450.00  2.3% validate_chain            [kernel.kallsyms]
+             4262.00  2.2% trace_hardirqs_on_caller  [kernel.kallsyms]
+             4239.00  2.2% do_raw_spin_lock          [kernel.kallsyms]
+             3548.00  1.9% do_raw_spin_unlock        [kernel.kallsyms]
+             2487.00  1.3% lock_release              [kernel.kallsyms]
+             2165.00  1.1% __local_bh_disable        [kernel.kallsyms]
+             1905.00  1.0% check_chain_key           [kernel.kallsyms]
+             1737.00  0.9% lock_acquire              [kernel.kallsyms]
+             1604.00  0.8% tcp_recvmsg               [kernel.kallsyms]
+             1524.00  0.8% mark_lock                 [kernel.kallsyms]
+             1464.00  0.8% schedule                  [kernel.kallsyms]
+             1423.00  0.7% __d_lookup                [guest.kernel.kallsyms]
+
+If you want to just show host data, pls. don't use parameter --guest.
+The headline includes guest os kernel and userspace percentage.
+
+2) perf kvm record
+[root@lkp-ne01 norm]# perf kvm --host --guest --guestkallsyms=/home/ymzhang/guest/kallsyms
+--guestmodules=/home/ymzhang/guest/modules record -f -a sleep 60
+[ perf record: Woken up 15 times to write data ]
+[ perf record: Captured and wrote 29.385 MB perf.data.kvm (~1283837 samples) ]
+
+3) perf kvm report
+        3.1) [root@lkp-ne01 norm]# perf kvm --host --guest --guestkallsyms=/home/ymzhang/guest/kallsyms
+--guestmodules=/home/ymzhang/guest/modules report --sort pid --showcpuutilization>norm.host.guest.report.pid
+# Samples: 424719292247
+#
+# Overhead  sys    us    guest sys    guest us            Command:  Pid
+# ........  .....................
+#
+    50.57%     1.02%     0.00%    39.97%     9.58%  qemu-system-x86: 3587
+    49.32%     1.35%     0.01%    35.20%    12.76%  qemu-system-x86: 3347
+     0.07%     0.07%     0.00%     0.00%     0.00%             perf: 5217
+
+
+Some performance guys require perf to show sys/us/guest_sys/guest_us per KVM guest
+instance which is actually just a multi-threaded process. Above sub parameter --showcpuutilization
+does so.
+
+        3.2) [root@lkp-ne01 norm]# perf kvm --host --guest --guestkallsyms=/home/ymzhang/guest/kallsyms
+--guestmodules=/home/ymzhang/guest/modules report >norm.host.guest.report
+# Samples: 2466991384118
+#
+# Overhead          Command                                                             Shared Object  Symbol
+# ........  ...............  ........................................................................  ......
+#
+    29.11%  qemu-system-x86  [guest.kernel.kallsyms]                                                   [g] __ticket_spin_lock
+     5.88%       tbench_srv  [kernel.kallsyms]                                                         [k] ftrace_likely_update
+     5.76%           tbench  [kernel.kallsyms]                                                         [k] ftrace_likely_update
+     3.88%  qemu-system-x86                                                                34c3255482  [u] 0x000034c3255482
+     1.83%           tbench  [kernel.kallsyms]                                                         [k] __lock_acquire
+     1.81%       tbench_srv  [kernel.kallsyms]                                                         [k] __lock_acquire
+     1.38%       tbench_srv  [kernel.kallsyms]                                                         [k] trace_hardirqs_off_caller
+     1.37%           tbench  [kernel.kallsyms]                                                         [k] trace_hardirqs_off_caller
+     1.13%  qemu-system-x86  [guest.kernel.kallsyms]                                                   [g] copy_user_generic_string
+     1.04%       tbench_srv  [kernel.kallsyms]                                                         [k] validate_chain
+     1.00%           tbench  [kernel.kallsyms]                                                         [k] trace_hardirqs_on_caller
+     1.00%       tbench_srv  [kernel.kallsyms]                                                         [k] trace_hardirqs_on_caller
+     0.95%           tbench  [kernel.kallsyms]                                                         [k] do_raw_spin_lock
+
+
+[u] means it's in guest os user space. [g] means in guest os kernel. Other info is very direct.
+If it shows a module such like [ext4], it means guest kernel module, because native host kernel's
+modules are start from something like /lib/modules/XXX.
+
+4) --guestmount example. I started 2 guest os. Run dbench testing in the 1st and tbench in 2nd guest os.
+[root@lkp-ne01 norm]#perf kvm --host --guest --guestmount=/home/ymzhang/guestmount/ top
+---------------------------------------------------------------------------------------------------------------------------------------
+   PerfTop:   15972 irqs/sec  kernel: 8.3% us: 0.5% guest kernel:73.9% guest us:17.3% exact:  0.0% [1000Hz cycles],  (all, 16 CPUs)
+---------------------------------------------------------------------------------------------------------------------------------------
+
+             samples  pcnt function                  DSO
+             _______ _____ _________________________ __________________________________________________
+
+            32960.00 17.4% __ticket_spin_lock        [guest.kernel.kallsyms]                           
+             5464.00  2.9% copy_user_generic_string  [guest.kernel.kallsyms]                           
+             4069.00  2.1% copy_user_generic_string  [guest.kernel.kallsyms]                           
+             3238.00  1.7% ftrace_likely_update      /lib/modules/2.6.34-rc4-tip-yangkvm+/build/vmlinux
+             2997.00  1.6% __lock_acquire            /lib/modules/2.6.34-rc4-tip-yangkvm+/build/vmlinux
+             2797.00  1.5% tcp_sendmsg               [guest.kernel.kallsyms]                           
+             2703.00  1.4% schedule                  [guest.kernel.kallsyms]                           
+             2384.00  1.3% __switch_to               [guest.kernel.kallsyms]                           
+             2125.00  1.1% tcp_ack                   [guest.kernel.kallsyms]                           
+             2045.00  1.1% tcp_recvmsg               [guest.kernel.kallsyms]                           
+             1862.00  1.0% tcp_transmit_skb          [guest.kernel.kallsyms]                           
+             1734.00  0.9% __ticket_spin_lock        [guest.kernel.kallsyms]                           
+             1388.00  0.7% lock_release              /lib/modules/2.6.34-rc4-tip-yangkvm+/build/vmlinux
+             1367.00  0.7% update_curr               [guest.kernel.kallsyms]                           
+             1339.00  0.7% fget_light                [guest.kernel.kallsyms]                           
+             1332.00  0.7% put_page                  [guest.kernel.kallsyms]                           
+             1324.00  0.7% ip_queue_xmit             [guest.kernel.kallsyms]                           
+             1296.00  0.7% __d_lookup                [guest.kernel.kallsyms]                           
+             1296.00  0.7% tcp_rcv_established       [guest.kernel.kallsyms]                           
+             1230.00  0.6% tcp_v4_rcv                [guest.kernel.kallsyms]                           
+             1092.00  0.6% dev_queue_xmit            [guest.kernel.kallsyms]                           
+             1073.00  0.6% kmem_cache_alloc          [guest.kernel.kallsyms]                           
+             1066.00  0.6% ip_rcv                    [guest.kernel.kallsyms]                           
+             1049.00  0.6% __inet_lookup_established [guest.kernel.kallsyms]                           
+             1048.00  0.6% tcp_write_xmit            [guest.kernel.kallsyms]                           
+
+
+Below is the patch against tip/master tree of 13th April.
+
+Signed-off-by: Zhang Yanmin <yanmin_zhang@linux.intel.com>
+
+---
+
+diff -Nraup linux-2.6_tip0413/arch/x86/include/asm/perf_event.h linux-2.6_tip0413_perfkvm/arch/x86/include/asm/perf_event.h
+--- linux-2.6_tip0413/arch/x86/include/asm/perf_event.h	2010-04-14 11:11:03.992966568 +0800
++++ linux-2.6_tip0413_perfkvm/arch/x86/include/asm/perf_event.h	2010-04-14 11:13:17.261881591 +0800
+@@ -135,17 +135,10 @@ extern void perf_events_lapic_init(void)
+  */
+ #define PERF_EFLAGS_EXACT	(1UL << 3)
+ 
+-#define perf_misc_flags(regs)				\
+-({	int misc = 0;					\
+-	if (user_mode(regs))				\
+-		misc |= PERF_RECORD_MISC_USER;		\
+-	else						\
+-		misc |= PERF_RECORD_MISC_KERNEL;	\
+-	if (regs->flags & PERF_EFLAGS_EXACT)		\
+-		misc |= PERF_RECORD_MISC_EXACT;		\
+-	misc; })
+-
+-#define perf_instruction_pointer(regs)	((regs)->ip)
++struct pt_regs;
++extern unsigned long perf_instruction_pointer(struct pt_regs *regs);
++extern unsigned long perf_misc_flags(struct pt_regs *regs);
++#define perf_misc_flags(regs)	perf_misc_flags(regs)
+ 
+ #else
+ static inline void init_hw_perf_events(void)		{ }
+diff -Nraup linux-2.6_tip0413/arch/x86/kernel/cpu/perf_event.c linux-2.6_tip0413_perfkvm/arch/x86/kernel/cpu/perf_event.c
+--- linux-2.6_tip0413/arch/x86/kernel/cpu/perf_event.c	2010-04-14 11:11:04.825028810 +0800
++++ linux-2.6_tip0413_perfkvm/arch/x86/kernel/cpu/perf_event.c	2010-04-14 17:02:12.198063684 +0800
+@@ -1720,6 +1720,11 @@ struct perf_callchain_entry *perf_callch
+ {
+ 	struct perf_callchain_entry *entry;
+ 
++	if (perf_guest_cbs && perf_guest_cbs->is_in_guest()) {
++		/* TODO: We don't support guest os callchain now */
++		return NULL;
++	}
++
+ 	if (in_nmi())
+ 		entry = &__get_cpu_var(pmc_nmi_entry);
+ 	else
+@@ -1743,3 +1748,30 @@ void perf_arch_fetch_caller_regs(struct 
+ 	regs->cs = __KERNEL_CS;
+ 	local_save_flags(regs->flags);
+ }
++
++unsigned long perf_instruction_pointer(struct pt_regs *regs)
++{
++	unsigned long ip;
++	if (perf_guest_cbs && perf_guest_cbs->is_in_guest())
++		ip = perf_guest_cbs->get_guest_ip();
++	else
++		ip = instruction_pointer(regs);
++	return ip;
++}
++
++unsigned long perf_misc_flags(struct pt_regs *regs)
++{
++	int misc = 0;
++	if (perf_guest_cbs && perf_guest_cbs->is_in_guest()) {
++		misc |= perf_guest_cbs->is_user_mode() ?
++			PERF_RECORD_MISC_GUEST_USER :
++			PERF_RECORD_MISC_GUEST_KERNEL;
++	} else
++		misc |= user_mode(regs) ? PERF_RECORD_MISC_USER :
++			PERF_RECORD_MISC_KERNEL;
++	if (regs->flags & PERF_EFLAGS_EXACT)
++		misc |= PERF_RECORD_MISC_EXACT;
++
++	return misc;
++}
++
+diff -Nraup linux-2.6_tip0413/arch/x86/kvm/x86.c linux-2.6_tip0413_perfkvm/arch/x86/kvm/x86.c
+--- linux-2.6_tip0413/arch/x86/kvm/x86.c	2010-04-14 11:11:04.341042024 +0800
++++ linux-2.6_tip0413_perfkvm/arch/x86/kvm/x86.c	2010-04-14 11:32:45.841278890 +0800
+@@ -3765,6 +3765,35 @@ static void kvm_timer_init(void)
+ 	}
+ }
+ 
++static DEFINE_PER_CPU(struct kvm_vcpu *, current_vcpu);
++
++static int kvm_is_in_guest(void)
++{
++	return percpu_read(current_vcpu) != NULL;
++}
++
++static int kvm_is_user_mode(void)
++{
++	int user_mode = 3;
++	if (percpu_read(current_vcpu))
++		user_mode = kvm_x86_ops->get_cpl(percpu_read(current_vcpu));
++	return user_mode != 0;
++}
++
++static unsigned long kvm_get_guest_ip(void)
++{
++	unsigned long ip = 0;
++	if (percpu_read(current_vcpu))
++		ip = kvm_rip_read(percpu_read(current_vcpu));
++	return ip;
++}
++
++static struct perf_guest_info_callbacks kvm_guest_cbs = {
++	.is_in_guest		= kvm_is_in_guest,
++	.is_user_mode		= kvm_is_user_mode,
++	.get_guest_ip		= kvm_get_guest_ip,
++};
++
+ int kvm_arch_init(void *opaque)
+ {
+ 	int r;
+@@ -3801,6 +3830,8 @@ int kvm_arch_init(void *opaque)
+ 
+ 	kvm_timer_init();
+ 
++	perf_register_guest_info_callbacks(&kvm_guest_cbs);
++
+ 	return 0;
+ 
+ out:
+@@ -3809,6 +3840,8 @@ out:
+ 
+ void kvm_arch_exit(void)
+ {
++	perf_unregister_guest_info_callbacks(&kvm_guest_cbs);
++
+ 	if (!boot_cpu_has(X86_FEATURE_CONSTANT_TSC))
+ 		cpufreq_unregister_notifier(&kvmclock_cpufreq_notifier_block,
+ 					    CPUFREQ_TRANSITION_NOTIFIER);
+@@ -4339,7 +4372,10 @@ static int vcpu_enter_guest(struct kvm_v
+ 	}
+ 
+ 	trace_kvm_entry(vcpu->vcpu_id);
++
++	percpu_write(current_vcpu, vcpu);
+ 	kvm_x86_ops->run(vcpu);
++	percpu_write(current_vcpu, NULL);
+ 
+ 	/*
+ 	 * If the guest has used debug registers, at least dr7
+diff -Nraup linux-2.6_tip0413/include/linux/perf_event.h linux-2.6_tip0413_perfkvm/include/linux/perf_event.h
+--- linux-2.6_tip0413/include/linux/perf_event.h	2010-04-14 11:11:16.922212684 +0800
++++ linux-2.6_tip0413_perfkvm/include/linux/perf_event.h	2010-04-14 11:34:33.478072738 +0800
+@@ -288,11 +288,13 @@ struct perf_event_mmap_page {
+ 	__u64	data_tail;		/* user-space written tail */
+ };
+ 
+-#define PERF_RECORD_MISC_CPUMODE_MASK		(3 << 0)
++#define PERF_RECORD_MISC_CPUMODE_MASK		(7 << 0)
+ #define PERF_RECORD_MISC_CPUMODE_UNKNOWN	(0 << 0)
+ #define PERF_RECORD_MISC_KERNEL			(1 << 0)
+ #define PERF_RECORD_MISC_USER			(2 << 0)
+ #define PERF_RECORD_MISC_HYPERVISOR		(3 << 0)
++#define PERF_RECORD_MISC_GUEST_KERNEL		(4 << 0)
++#define PERF_RECORD_MISC_GUEST_USER		(5 << 0)
+ 
+ #define PERF_RECORD_MISC_EXACT			(1 << 14)
+ /*
+@@ -446,6 +448,12 @@ enum perf_callchain_context {
+ # include <asm/perf_event.h>
+ #endif
+ 
++struct perf_guest_info_callbacks {
++	int (*is_in_guest) (void);
++	int (*is_user_mode) (void);
++	unsigned long (*get_guest_ip) (void);
++};
++
+ #ifdef CONFIG_HAVE_HW_BREAKPOINT
+ #include <asm/hw_breakpoint.h>
+ #endif
+@@ -920,6 +928,12 @@ static inline void perf_event_mmap(struc
+ 		__perf_event_mmap(vma);
+ }
+ 
++extern struct perf_guest_info_callbacks *perf_guest_cbs;
++extern int perf_register_guest_info_callbacks(
++		struct perf_guest_info_callbacks *);
++extern int perf_unregister_guest_info_callbacks(
++		struct perf_guest_info_callbacks *);
++
+ extern void perf_event_comm(struct task_struct *tsk);
+ extern void perf_event_fork(struct task_struct *tsk);
+ 
+@@ -989,6 +1003,11 @@ perf_sw_event(u32 event_id, u64 nr, int 
+ static inline void
+ perf_bp_event(struct perf_event *event, void *data)			{ }
+ 
++static inline int perf_register_guest_info_callbacks
++(struct perf_guest_info_callbacks *) {return 0; }
++static inline int perf_unregister_guest_info_callbacks
++(struct perf_guest_info_callbacks *) {return 0; }
++
+ static inline void perf_event_mmap(struct vm_area_struct *vma)		{ }
+ static inline void perf_event_comm(struct task_struct *tsk)		{ }
+ static inline void perf_event_fork(struct task_struct *tsk)		{ }
+diff -Nraup linux-2.6_tip0413/kernel/perf_event.c linux-2.6_tip0413_perfkvm/kernel/perf_event.c
+--- linux-2.6_tip0413/kernel/perf_event.c	2010-04-14 11:12:04.090770764 +0800
++++ linux-2.6_tip0413_perfkvm/kernel/perf_event.c	2010-04-14 11:13:17.265859229 +0800
+@@ -2797,6 +2797,27 @@ void perf_arch_fetch_caller_regs(struct 
+ 
+ 
+ /*
++ * We assume there is only KVM supporting the callbacks.
++ * Later on, we might change it to a list if there is
++ * another virtualization implementation supporting the callbacks.
++ */
++struct perf_guest_info_callbacks *perf_guest_cbs;
++
++int perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *cbs)
++{
++	perf_guest_cbs = cbs;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(perf_register_guest_info_callbacks);
++
++int perf_unregister_guest_info_callbacks(struct perf_guest_info_callbacks *cbs)
++{
++	perf_guest_cbs = NULL;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(perf_unregister_guest_info_callbacks);
++
++/*
+  * Output
+  */
+ static bool perf_output_space(struct perf_mmap_data *data, unsigned long tail,
+@@ -3748,7 +3769,7 @@ void __perf_event_mmap(struct vm_area_st
+ 		.event_id  = {
+ 			.header = {
+ 				.type = PERF_RECORD_MMAP,
+-				.misc = 0,
++				.misc = PERF_RECORD_MISC_USER,
+ 				/* .size */
+ 			},
+ 			/* .pid */
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-annotate.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-annotate.c
+--- linux-2.6_tip0413/tools/perf/builtin-annotate.c	2010-04-14 11:11:58.474229259 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-annotate.c	2010-04-14 11:13:17.269859901 +0800
+@@ -571,7 +571,7 @@ static int __cmd_annotate(void)
+ 		perf_session__fprintf(session, stdout);
+ 
+ 	if (verbose > 2)
+-		dsos__fprintf(stdout);
++		dsos__fprintf(&session->kerninfo_root, stdout);
+ 
+ 	perf_session__collapse_resort(&session->hists);
+ 	perf_session__output_resort(&session->hists, session->event_total[0]);
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-buildid-list.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-buildid-list.c
+--- linux-2.6_tip0413/tools/perf/builtin-buildid-list.c	2010-04-14 11:11:58.462227060 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-buildid-list.c	2010-04-14 11:13:17.269859901 +0800
+@@ -46,7 +46,7 @@ static int __cmd_buildid_list(void)
+ 	if (with_hits)
+ 		perf_session__process_events(session, &build_id__mark_dso_hit_ops);
+ 
+-	dsos__fprintf_buildid(stdout, with_hits);
++	dsos__fprintf_buildid(&session->kerninfo_root, stdout, with_hits);
+ 
+ 	perf_session__delete(session);
+ 	return err;
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-diff.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-diff.c
+--- linux-2.6_tip0413/tools/perf/builtin-diff.c	2010-04-14 11:11:58.426247688 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-diff.c	2010-04-14 11:35:43.245364332 +0800
+@@ -33,7 +33,7 @@ static int perf_session__add_hist_entry(
+ 		return -ENOMEM;
+ 
+ 	if (hit)
+-		he->count += count;
++		__perf_session__add_count(he, al, count);
+ 
+ 	return 0;
+ }
+@@ -225,6 +225,10 @@ int cmd_diff(int argc, const char **argv
+ 			input_new = argv[1];
+ 		} else
+ 			input_new = argv[0];
++	} else if (symbol_conf.default_guest_vmlinux_name ||
++		   symbol_conf.default_guest_kallsyms) {
++		input_old = "perf.data.host";
++		input_new = "perf.data.guest";
+ 	}
+ 
+ 	symbol_conf.exclude_other = false;
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin.h linux-2.6_tip0413_perfkvm/tools/perf/builtin.h
+--- linux-2.6_tip0413/tools/perf/builtin.h	2010-04-14 11:11:58.234222967 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin.h	2010-04-14 11:13:17.313858518 +0800
+@@ -32,5 +32,6 @@ extern int cmd_version(int argc, const c
+ extern int cmd_probe(int argc, const char **argv, const char *prefix);
+ extern int cmd_kmem(int argc, const char **argv, const char *prefix);
+ extern int cmd_lock(int argc, const char **argv, const char *prefix);
++extern int cmd_kvm(int argc, const char **argv, const char *prefix);
+ 
+ #endif
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-kmem.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-kmem.c
+--- linux-2.6_tip0413/tools/perf/builtin-kmem.c	2010-04-14 11:11:58.806260439 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-kmem.c	2010-04-14 11:39:10.199395473 +0800
+@@ -351,6 +351,7 @@ static void __print_result(struct rb_roo
+ 			   int n_lines, int is_caller)
+ {
+ 	struct rb_node *next;
++	struct kernel_info *kerninfo;
+ 
+ 	printf("%.102s\n", graph_dotted_line);
+ 	printf(" %-34s |",  is_caller ? "Callsite": "Alloc Ptr");
+@@ -359,6 +360,11 @@ static void __print_result(struct rb_roo
+ 
+ 	next = rb_first(root);
+ 
++	kerninfo = kerninfo__findhost(&session->kerninfo_root);
++	if (!kerninfo) {
++		pr_err("__print_result: couldn't find kernel information\n");
++		return;
++	}
+ 	while (next && n_lines--) {
+ 		struct alloc_stat *data = rb_entry(next, struct alloc_stat,
+ 						   node);
+@@ -370,7 +376,7 @@ static void __print_result(struct rb_roo
+ 		if (is_caller) {
+ 			addr = data->call_site;
+ 			if (!raw_ip)
+-				sym = map_groups__find_function(&session->kmaps,
++				sym = map_groups__find_function(&kerninfo->kmaps,
+ 								addr, &map, NULL);
+ 		} else
+ 			addr = data->ptr;
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-kvm.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-kvm.c
+--- linux-2.6_tip0413/tools/perf/builtin-kvm.c	1970-01-01 08:00:00.000000000 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-kvm.c	2010-04-14 11:40:06.551652083 +0800
+@@ -0,0 +1,145 @@
++#include "builtin.h"
++#include "perf.h"
++
++#include "util/util.h"
++#include "util/cache.h"
++#include "util/symbol.h"
++#include "util/thread.h"
++#include "util/header.h"
++#include "util/session.h"
++
++#include "util/parse-options.h"
++#include "util/trace-event.h"
++
++#include "util/debug.h"
++
++#include <sys/prctl.h>
++
++#include <semaphore.h>
++#include <pthread.h>
++#include <math.h>
++
++static char			*file_name = NULL;
++static char			name_buffer[256];
++
++int				perf_host = 1;
++int				perf_guest = 0;
++
++static const char * const kvm_usage[] = {
++	"perf kvm [<options>] {top|record|report|diff}",
++	NULL
++};
++
++static const struct option kvm_options[] = {
++	OPT_STRING('i', "input", &file_name, "file",
++		   "Input file name"),
++	OPT_STRING('o', "output", &file_name, "file",
++		   "Output file name"),
++	OPT_BOOLEAN(0, "guest", &perf_guest,
++		    "Collect guest os data"),
++	OPT_BOOLEAN(0, "host", &perf_host,
++		    "Collect guest os data"),
++	OPT_STRING(0, "guestmount", &symbol_conf.guestmount, "directory",
++		   "guest mount directory under which every guest os instance has a subdir"),
++	OPT_STRING(0, "guestvmlinux", &symbol_conf.default_guest_vmlinux_name, "file",
++		   "file saving guest os vmlinux"),
++	OPT_STRING(0, "guestkallsyms", &symbol_conf.default_guest_kallsyms, "file",
++		   "file saving guest os /proc/kallsyms"),
++	OPT_STRING(0, "guestmodules", &symbol_conf.default_guest_modules, "file",
++		   "file saving guest os /proc/modules"),
++	OPT_END()
++};
++
++static int __cmd_record(int argc, const char **argv)
++{
++	int rec_argc, i = 0, j;
++	const char **rec_argv;
++
++	rec_argc = argc + 2;
++	rec_argv = calloc(rec_argc + 1, sizeof(char *));
++	rec_argv[i++] = strdup("record");
++	rec_argv[i++] = strdup("-o");
++	rec_argv[i++] = strdup(file_name);
++	for (j = 1; j < argc; j++, i++)
++		rec_argv[i] = argv[j];
++
++	BUG_ON(i != rec_argc);
++
++	return cmd_record(i, rec_argv, NULL);
++}
++
++static int __cmd_report(int argc, const char **argv)
++{
++	int rec_argc, i = 0, j;
++	const char **rec_argv;
++
++	rec_argc = argc + 2;
++	rec_argv = calloc(rec_argc + 1, sizeof(char *));
++	rec_argv[i++] = strdup("report");
++	rec_argv[i++] = strdup("-i");
++	rec_argv[i++] = strdup(file_name);
++	for (j = 1; j < argc; j++, i++)
++		rec_argv[i] = argv[j];
++
++	BUG_ON(i != rec_argc);
++
++	return cmd_report(i, rec_argv, NULL);
++}
++
++static int __cmd_buildid_list(int argc, const char **argv)
++{
++	int rec_argc, i = 0, j;
++	const char **rec_argv;
++
++	rec_argc = argc + 2;
++	rec_argv = calloc(rec_argc + 1, sizeof(char *));
++	rec_argv[i++] = strdup("buildid-list");
++	rec_argv[i++] = strdup("-i");
++	rec_argv[i++] = strdup(file_name);
++	for (j = 1; j < argc; j++, i++)
++		rec_argv[i] = argv[j];
++
++	BUG_ON(i != rec_argc);
++
++	return cmd_buildid_list(i, rec_argv, NULL);
++}
++
++int cmd_kvm(int argc, const char **argv, const char *prefix __used)
++{
++	perf_host = perf_guest = 0;
++
++	argc = parse_options(argc, argv, kvm_options, kvm_usage,
++			PARSE_OPT_STOP_AT_NON_OPTION);
++	if (!argc)
++		usage_with_options(kvm_usage, kvm_options);
++
++	if (!perf_host)
++		perf_guest = 1;
++
++	if (!file_name) {
++		if (perf_host && !perf_guest)
++			sprintf(name_buffer, "perf.data.host");
++		else if (!perf_host && perf_guest)
++			sprintf(name_buffer, "perf.data.guest");
++		else
++			sprintf(name_buffer, "perf.data.kvm");
++		file_name = name_buffer;
++	}
++
++	if (!strncmp(argv[0], "rec", 3)) {
++		return __cmd_record(argc, argv);
++	} else if (!strncmp(argv[0], "rep", 3)) {
++		return __cmd_report(argc, argv);
++	} else if (!strncmp(argv[0], "diff", 4)) {
++		return cmd_diff(argc, argv, NULL);
++	} else if (!strncmp(argv[0], "top", 3)) {
++		return cmd_top(argc, argv, NULL);
++	} else if (!strncmp(argv[0], "buildid-list", 12)) {
++		return __cmd_buildid_list(argc, argv);
++	} else {
++		usage_with_options(kvm_usage, kvm_options);
++	}
++
++	return 0;
++}
++
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-record.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-record.c
+--- linux-2.6_tip0413/tools/perf/builtin-record.c	2010-04-14 11:11:58.806260439 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-record.c	2010-04-14 14:11:09.625252460 +0800
+@@ -426,6 +426,52 @@ static void atexit_header(void)
+ 	perf_header__write(&session->header, output, true);
+ }
+ 
++static void event__synthesize_guest_os(struct kernel_info *kerninfo,
++		void *data __attribute__((unused)))
++{
++	int err;
++	char *guest_kallsyms;
++	char path[PATH_MAX];
++
++	if (is_host_kernel(kerninfo))
++		return;
++
++	/*
++	 *As for guest kernel when processing subcommand record&report,
++	 *we arrange module mmap prior to guest kernel mmap and trigger
++	 *a preload dso because default guest module symbols are loaded
++	 *from guest kallsyms instead of /lib/modules/XXX/XXX. This
++	 *method is used to avoid symbol missing when the first addr is
++	 *in module instead of in guest kernel.
++	 */
++	err = event__synthesize_modules(process_synthesized_event,
++			session,
++			kerninfo);
++	if (err < 0)
++		pr_err("Couldn't record guest kernel [%d]'s reference"
++			" relocation symbol.\n", kerninfo->pid);
++
++	if (is_default_guest(kerninfo))
++		guest_kallsyms = (char *) symbol_conf.default_guest_kallsyms;
++	else {
++		sprintf(path, "%s/proc/kallsyms", kerninfo->root_dir);
++		guest_kallsyms = path;
++	}
++
++	/*
++	 * We use _stext for guest kernel because guest kernel's /proc/kallsyms
++	 * have no _text sometimes.
++	 */
++	err = event__synthesize_kernel_mmap(process_synthesized_event,
++			session, kerninfo, "_text");
++	if (err < 0)
++		err = event__synthesize_kernel_mmap(process_synthesized_event,
++				session, kerninfo, "_stext");
++	if (err < 0)
++		pr_err("Couldn't record guest kernel [%d]'s reference"
++			" relocation symbol.\n", kerninfo->pid);
++}
++
+ static int __cmd_record(int argc, const char **argv)
+ {
+ 	int i, counter;
+@@ -437,6 +483,7 @@ static int __cmd_record(int argc, const 
+ 	int child_ready_pipe[2], go_pipe[2];
+ 	const bool forks = argc > 0;
+ 	char buf;
++	struct kernel_info *kerninfo;
+ 
+ 	page_size = sysconf(_SC_PAGE_SIZE);
+ 
+@@ -572,21 +619,31 @@ static int __cmd_record(int argc, const 
+ 
+ 	post_processing_offset = lseek(output, 0, SEEK_CUR);
+ 
++	kerninfo = kerninfo__findhost(&session->kerninfo_root);
++	if (!kerninfo) {
++		pr_err("Couldn't find native kernel information.\n");
++		return -1;
++	}
++
+ 	err = event__synthesize_kernel_mmap(process_synthesized_event,
+-					    session, "_text");
++			session, kerninfo, "_text");
+ 	if (err < 0)
+ 		err = event__synthesize_kernel_mmap(process_synthesized_event,
+-						    session, "_stext");
++				session, kerninfo, "_stext");
+ 	if (err < 0) {
+ 		pr_err("Couldn't record kernel reference relocation symbol.\n");
+ 		return err;
+ 	}
+ 
+-	err = event__synthesize_modules(process_synthesized_event, session);
++	err = event__synthesize_modules(process_synthesized_event,
++				session, kerninfo);
+ 	if (err < 0) {
+ 		pr_err("Couldn't record kernel reference relocation symbol.\n");
+ 		return err;
+ 	}
++	if (perf_guest)
++		kerninfo__process_allkernels(&session->kerninfo_root,
++			event__synthesize_guest_os, session);
+ 
+ 	if (!system_wide && profile_cpu == -1)
+ 		event__synthesize_thread(target_tid, process_synthesized_event,
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-report.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-report.c
+--- linux-2.6_tip0413/tools/perf/builtin-report.c	2010-04-14 11:11:58.462227060 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-report.c	2010-04-14 11:13:17.313858518 +0800
+@@ -108,7 +108,7 @@ static int perf_session__add_hist_entry(
+ 		return -ENOMEM;
+ 
+ 	if (hit)
+-		he->count += data->period;
++		__perf_session__add_count(he, al,  data->period);
+ 
+ 	if (symbol_conf.use_callchain) {
+ 		if (!hit)
+@@ -300,7 +300,7 @@ static int __cmd_report(void)
+ 		perf_session__fprintf(session, stdout);
+ 
+ 	if (verbose > 2)
+-		dsos__fprintf(stdout);
++		dsos__fprintf(&session->kerninfo_root, stdout);
+ 
+ 	next = rb_first(&session->stats_by_id);
+ 	while (next) {
+@@ -437,6 +437,8 @@ static const struct option options[] = {
+ 		   "sort by key(s): pid, comm, dso, symbol, parent"),
+ 	OPT_BOOLEAN('P', "full-paths", &symbol_conf.full_paths,
+ 		    "Don't shorten the pathnames taking into account the cwd"),
++	OPT_BOOLEAN(0, "showcpuutilization", &symbol_conf.show_cpu_utilization,
++		    "Show sample percentage for different cpu modes"),
+ 	OPT_STRING('p', "parent", &parent_pattern, "regex",
+ 		   "regex filter to identify parent, see: '--sort parent'"),
+ 	OPT_BOOLEAN('x', "exclude-other", &symbol_conf.exclude_other,
+diff -Nraup linux-2.6_tip0413/tools/perf/builtin-top.c linux-2.6_tip0413_perfkvm/tools/perf/builtin-top.c
+--- linux-2.6_tip0413/tools/perf/builtin-top.c	2010-04-14 11:11:58.458238567 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/builtin-top.c	2010-04-14 14:28:14.576215651 +0800
+@@ -420,8 +420,9 @@ static double sym_weight(const struct sy
+ }
+ 
+ static long			samples;
+-static long			userspace_samples;
++static long			kernel_samples, us_samples;
+ static long			exact_samples;
++static long			guest_us_samples, guest_kernel_samples;
+ static const char		CONSOLE_CLEAR[] = "[H[2J";
+ 
+ static void __list_insert_active_sym(struct sym_entry *syme)
+@@ -461,7 +462,10 @@ static void print_sym_table(void)
+ 	int printed = 0, j;
+ 	int counter, snap = !display_weighted ? sym_counter : 0;
+ 	float samples_per_sec = samples/delay_secs;
+-	float ksamples_per_sec = (samples-userspace_samples)/delay_secs;
++	float ksamples_per_sec = kernel_samples/delay_secs;
++	float us_samples_per_sec = (us_samples)/delay_secs;
++	float guest_kernel_samples_per_sec = (guest_kernel_samples)/delay_secs;
++	float guest_us_samples_per_sec = (guest_us_samples)/delay_secs;
+ 	float esamples_percent = (100.0*exact_samples)/samples;
+ 	float sum_ksamples = 0.0;
+ 	struct sym_entry *syme, *n;
+@@ -470,7 +474,8 @@ static void print_sym_table(void)
+ 	int sym_width = 0, dso_width = 0, dso_short_width = 0;
+ 	const int win_width = winsize.ws_col - 1;
+ 
+-	samples = userspace_samples = exact_samples = 0;
++	samples = us_samples = kernel_samples = exact_samples = 0;
++	guest_kernel_samples = guest_us_samples = 0;
+ 
+ 	/* Sort the active symbols */
+ 	pthread_mutex_lock(&active_symbols_lock);
+@@ -501,10 +506,21 @@ static void print_sym_table(void)
+ 	puts(CONSOLE_CLEAR);
+ 
+ 	printf("%-*.*s\n", win_width, win_width, graph_dotted_line);
+-	printf( "   PerfTop:%8.0f irqs/sec  kernel:%4.1f%%  exact: %4.1f%% [",
+-		samples_per_sec,
+-		100.0 - (100.0*((samples_per_sec-ksamples_per_sec)/samples_per_sec)),
+-		esamples_percent);
++	if (!perf_guest) {
++		printf( "   PerfTop:%8.0f irqs/sec  kernel:%4.1f%%  exact: %4.1f%% [",
++			samples_per_sec,
++			100.0 - (100.0*((samples_per_sec-ksamples_per_sec)/samples_per_sec)),
++			esamples_percent);
++	} else {
++		printf( "   PerfTop:%8.0f irqs/sec  kernel:%4.1f%% us:%4.1f%%"
++			" guest kernel:%4.1f%% guest us:%4.1f%% exact: %4.1f%% [",
++			samples_per_sec,
++			100.0 - (100.0*((samples_per_sec-ksamples_per_sec)/samples_per_sec)),
++			100.0 - (100.0*((samples_per_sec-us_samples_per_sec)/samples_per_sec)),
++			100.0 - (100.0*((samples_per_sec-guest_kernel_samples_per_sec)/samples_per_sec)),
++			100.0 - (100.0*((samples_per_sec-guest_us_samples_per_sec)/samples_per_sec)),
++			esamples_percent);
++	}
+ 
+ 	if (nr_counters == 1 || !display_weighted) {
+ 		printf("%Ld", (u64)attrs[0].sample_period);
+@@ -597,7 +613,6 @@ static void print_sym_table(void)
+ 
+ 		syme = rb_entry(nd, struct sym_entry, rb_node);
+ 		sym = sym_entry__symbol(syme);
+-
+ 		if (++printed > print_entries || (int)syme->snap_count < count_filter)
+ 			continue;
+ 
+@@ -761,7 +776,7 @@ static int key_mapped(int c)
+ 	return 0;
+ }
+ 
+-static void handle_keypress(int c)
++static void handle_keypress(struct perf_session *session, int c)
+ {
+ 	if (!key_mapped(c)) {
+ 		struct pollfd stdin_poll = { .fd = 0, .events = POLLIN };
+@@ -830,7 +845,7 @@ static void handle_keypress(int c)
+ 		case 'Q':
+ 			printf("exiting.\n");
+ 			if (dump_symtab)
+-				dsos__fprintf(stderr);
++				dsos__fprintf(&session->kerninfo_root, stderr);
+ 			exit(0);
+ 		case 's':
+ 			prompt_symbol(&sym_filter_entry, "Enter details symbol");
+@@ -866,6 +881,7 @@ static void *display_thread(void *arg __
+ 	struct pollfd stdin_poll = { .fd = 0, .events = POLLIN };
+ 	struct termios tc, save;
+ 	int delay_msecs, c;
++	struct perf_session *session = (struct perf_session *) arg;
+ 
+ 	tcgetattr(0, &save);
+ 	tc = save;
+@@ -886,7 +902,7 @@ repeat:
+ 	c = getc(stdin);
+ 	tcsetattr(0, TCSAFLUSH, &save);
+ 
+-	handle_keypress(c);
++	handle_keypress(session, c);
+ 	goto repeat;
+ 
+ 	return NULL;
+@@ -957,24 +973,46 @@ static void event__process_sample(const 
+ 	u64 ip = self->ip.ip;
+ 	struct sym_entry *syme;
+ 	struct addr_location al;
++	struct kernel_info *kerninfo;
+ 	u8 origin = self->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
+ 
+ 	++samples;
+ 
+ 	switch (origin) {
+ 	case PERF_RECORD_MISC_USER:
+-		++userspace_samples;
++		++us_samples;
+ 		if (hide_user_symbols)
+ 			return;
++		kerninfo = kerninfo__findhost(&session->kerninfo_root);
+ 		break;
+ 	case PERF_RECORD_MISC_KERNEL:
++		++kernel_samples;
+ 		if (hide_kernel_symbols)
+ 			return;
++		kerninfo = kerninfo__findhost(&session->kerninfo_root);
+ 		break;
++	case PERF_RECORD_MISC_GUEST_KERNEL:
++		++guest_kernel_samples;
++		kerninfo = kerninfo__find(&session->kerninfo_root,
++					  self->ip.pid);
++		break;
++	case PERF_RECORD_MISC_GUEST_USER:
++		++guest_us_samples;
++		/*
++		 * TODO: we don't process guest user from host side
++		 * except simple counting 
++		 */
++		return;
+ 	default:
+ 		return;
+ 	}
+ 
++	if (!kerninfo && perf_guest) {
++		pr_err("Can't find guest [%d]'s kernel information\n",
++			self->ip.pid);
++		return;
++	}
++
+ 	if (self->header.misc & PERF_RECORD_MISC_EXACT)
+ 		exact_samples++;
+ 
+@@ -994,7 +1032,7 @@ static void event__process_sample(const 
+ 		 * --hide-kernel-symbols, even if the user specifies an
+ 		 * invalid --vmlinux ;-)
+ 		 */
+-		if (al.map == session->vmlinux_maps[MAP__FUNCTION] &&
++		if (al.map == kerninfo->vmlinux_maps[MAP__FUNCTION] &&
+ 		    RB_EMPTY_ROOT(&al.map->dso->symbols[MAP__FUNCTION])) {
+ 			pr_err("The %s file can't be used\n",
+ 			       symbol_conf.vmlinux_name);
+@@ -1261,7 +1299,7 @@ static int __cmd_top(void)
+ 
+ 	perf_session__mmap_read(session);
+ 
+-	if (pthread_create(&thread, NULL, display_thread, NULL)) {
++	if (pthread_create(&thread, NULL, display_thread, session)) {
+ 		printf("Could not create display thread.\n");
+ 		exit(-1);
+ 	}
+diff -Nraup linux-2.6_tip0413/tools/perf/Makefile linux-2.6_tip0413_perfkvm/tools/perf/Makefile
+--- linux-2.6_tip0413/tools/perf/Makefile	2010-04-14 11:11:58.802281816 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/Makefile	2010-04-14 11:13:17.313858518 +0800
+@@ -472,6 +472,7 @@ BUILTIN_OBJS += $(OUTPUT)builtin-trace.o
+ BUILTIN_OBJS += $(OUTPUT)builtin-probe.o
+ BUILTIN_OBJS += $(OUTPUT)builtin-kmem.o
+ BUILTIN_OBJS += $(OUTPUT)builtin-lock.o
++BUILTIN_OBJS += $(OUTPUT)builtin-kvm.o
+ 
+ PERFLIBS = $(LIB_FILE)
+ 
+diff -Nraup linux-2.6_tip0413/tools/perf/perf.c linux-2.6_tip0413_perfkvm/tools/perf/perf.c
+--- linux-2.6_tip0413/tools/perf/perf.c	2010-04-14 11:11:58.478250552 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/perf.c	2010-04-14 11:13:17.313858518 +0800
+@@ -307,6 +307,7 @@ static void handle_internal_command(int 
+ 		{ "probe",	cmd_probe,	0 },
+ 		{ "kmem",	cmd_kmem,	0 },
+ 		{ "lock",	cmd_lock,	0 },
++		{ "kvm",	cmd_kvm,	0 },
+ 	};
+ 	unsigned int i;
+ 	static const char ext[] = STRIP_EXTENSION;
+diff -Nraup linux-2.6_tip0413/tools/perf/perf.h linux-2.6_tip0413_perfkvm/tools/perf/perf.h
+--- linux-2.6_tip0413/tools/perf/perf.h	2010-04-14 11:11:58.810277694 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/perf.h	2010-04-14 11:13:17.313858518 +0800
+@@ -131,4 +131,6 @@ struct ip_callchain {
+ 	u64 ips[0];
+ };
+ 
++extern int perf_host, perf_guest;
++
+ #endif
+diff -Nraup linux-2.6_tip0413/tools/perf/util/build-id.c linux-2.6_tip0413_perfkvm/tools/perf/util/build-id.c
+--- linux-2.6_tip0413/tools/perf/util/build-id.c	2010-04-14 11:11:58.654213263 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/build-id.c	2010-04-14 11:13:17.317861518 +0800
+@@ -24,7 +24,7 @@ static int build_id__mark_dso_hit(event_
+ 	}
+ 
+ 	thread__find_addr_map(thread, session, cpumode, MAP__FUNCTION,
+-			      event->ip.ip, &al);
++			      event->ip.pid, event->ip.ip, &al);
+ 
+ 	if (al.map != NULL)
+ 		al.map->dso->hit = 1;
+diff -Nraup linux-2.6_tip0413/tools/perf/util/event.c linux-2.6_tip0413_perfkvm/tools/perf/util/event.c
+--- linux-2.6_tip0413/tools/perf/util/event.c	2010-04-14 11:11:58.662259868 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/event.c	2010-04-14 15:33:50.903104472 +0800
+@@ -112,7 +112,11 @@ static int event__synthesize_mmap_events
+ 		event_t ev = {
+ 			.header = {
+ 				.type = PERF_RECORD_MMAP,
+-				.misc = 0, /* Just like the kernel, see kernel/perf_event.c __perf_event_mmap */
++				/*
++ 				 * Just like the kernel, see kernel/perf_event.c
++ 				 * __perf_event_mmap
++ 				 */
++				.misc = PERF_RECORD_MISC_USER,
+ 			 },
+ 		};
+ 		int n;
+@@ -167,11 +171,23 @@ static int event__synthesize_mmap_events
+ }
+ 
+ int event__synthesize_modules(event__handler_t process,
+-			      struct perf_session *session)
++			      struct perf_session *session,
++			      struct kernel_info *kerninfo)
+ {
+ 	struct rb_node *nd;
++	struct map_groups *kmaps = &kerninfo->kmaps;
++	u16 misc;
+ 
+-	for (nd = rb_first(&session->kmaps.maps[MAP__FUNCTION]);
++	/*
++	 * kernel uses 0 for user space maps, see kernel/perf_event.c
++	 * __perf_event_mmap
++	 */
++	if (is_host_kernel(kerninfo))
++		misc = PERF_RECORD_MISC_KERNEL;
++	else
++		misc = PERF_RECORD_MISC_GUEST_KERNEL;
++
++	for (nd = rb_first(&kmaps->maps[MAP__FUNCTION]);
+ 	     nd; nd = rb_next(nd)) {
+ 		event_t ev;
+ 		size_t size;
+@@ -182,12 +198,13 @@ int event__synthesize_modules(event__han
+ 
+ 		size = ALIGN(pos->dso->long_name_len + 1, sizeof(u64));
+ 		memset(&ev, 0, sizeof(ev));
+-		ev.mmap.header.misc = 1; /* kernel uses 0 for user space maps, see kernel/perf_event.c __perf_event_mmap */
++		ev.mmap.header.misc = misc;
+ 		ev.mmap.header.type = PERF_RECORD_MMAP;
+ 		ev.mmap.header.size = (sizeof(ev.mmap) -
+ 				        (sizeof(ev.mmap.filename) - size));
+ 		ev.mmap.start = pos->start;
+ 		ev.mmap.len   = pos->end - pos->start;
++		ev.mmap.pid   = kerninfo->pid;
+ 
+ 		memcpy(ev.mmap.filename, pos->dso->long_name,
+ 		       pos->dso->long_name_len + 1);
+@@ -250,13 +267,17 @@ static int find_symbol_cb(void *arg, con
+ 
+ int event__synthesize_kernel_mmap(event__handler_t process,
+ 				  struct perf_session *session,
++				  struct kernel_info *kerninfo,
+ 				  const char *symbol_name)
+ {
+ 	size_t size;
++	const char *filename, *mmap_name;
++	char path[PATH_MAX];
++	struct map *map;
++
+ 	event_t ev = {
+ 		.header = {
+ 			.type = PERF_RECORD_MMAP,
+-			.misc = 1, /* kernel uses 0 for user space maps, see kernel/perf_event.c __perf_event_mmap */
+ 		},
+ 	};
+ 	/*
+@@ -266,16 +287,38 @@ int event__synthesize_kernel_mmap(event_
+ 	 */
+ 	struct process_symbol_args args = { .name = symbol_name, };
+ 
+-	if (kallsyms__parse("/proc/kallsyms", &args, find_symbol_cb) <= 0)
++	if (is_host_kernel(kerninfo)) {
++		/*
++		 * kernel uses PERF_RECORD_MISC_USER for user space maps,
++		 * see kernel/perf_event.c __perf_event_mmap
++		 */
++		ev.header.misc = PERF_RECORD_MISC_KERNEL;
++		mmap_name = "kernel.kallsyms";
++		filename = "/proc/kallsyms";
++	} else {
++		ev.header.misc = PERF_RECORD_MISC_GUEST_KERNEL;
++		mmap_name = "guest.kernel.kallsyms";
++		if (is_default_guest(kerninfo))
++			filename = (char *) symbol_conf.default_guest_kallsyms;
++		else {
++			sprintf(path, "%s/proc/kallsyms", kerninfo->root_dir);
++			filename = path;
++		}
++	}
++
++	if (kallsyms__parse(filename, &args, find_symbol_cb) <= 0)
+ 		return -ENOENT;
+ 
++	map = kerninfo->vmlinux_maps[MAP__FUNCTION];
+ 	size = snprintf(ev.mmap.filename, sizeof(ev.mmap.filename),
+-			"[kernel.kallsyms.%s]", symbol_name) + 1;
++			"[%s.%s]", mmap_name, symbol_name) + 1;
+ 	size = ALIGN(size, sizeof(u64));
+-	ev.mmap.header.size = (sizeof(ev.mmap) - (sizeof(ev.mmap.filename) - size));
++	ev.mmap.header.size = (sizeof(ev.mmap) -
++			(sizeof(ev.mmap.filename) - size));
+ 	ev.mmap.pgoff = args.start;
+-	ev.mmap.start = session->vmlinux_maps[MAP__FUNCTION]->start;
+-	ev.mmap.len   = session->vmlinux_maps[MAP__FUNCTION]->end - ev.mmap.start ;
++	ev.mmap.start = map->start;
++	ev.mmap.len   = map->end - ev.mmap.start;
++	ev.mmap.pid   = kerninfo->pid;
+ 
+ 	return process(&ev, session);
+ }
+@@ -329,82 +372,134 @@ int event__process_lost(event_t *self, s
+ 	return 0;
+ }
+ 
+-int event__process_mmap(event_t *self, struct perf_session *session)
++static void event_set_kernel_mmap_len(struct map **maps, event_t *self)
+ {
+-	struct thread *thread;
+-	struct map *map;
+-
+-	dump_printf(" %d/%d: [%#Lx(%#Lx) @ %#Lx]: %s\n",
+-		    self->mmap.pid, self->mmap.tid, self->mmap.start,
+-		    self->mmap.len, self->mmap.pgoff, self->mmap.filename);
++	maps[MAP__FUNCTION]->start = self->mmap.start;
++	maps[MAP__FUNCTION]->end   = self->mmap.start + self->mmap.len;
++	/*
++	 * Be a bit paranoid here, some perf.data file came with
++	 * a zero sized synthesized MMAP event for the kernel.
++	 */
++	if (maps[MAP__FUNCTION]->end == 0)
++		maps[MAP__FUNCTION]->end = ~0UL;
++}
+ 
+-	if (self->mmap.pid == 0) {
+-		static const char kmmap_prefix[] = "[kernel.kallsyms.";
++static int event__process_kernel_mmap(event_t *self,
++			struct perf_session *session)
++{
++	struct map *map;
++	const char *kmmap_prefix, *short_name;
++	struct kernel_info *kerninfo;
++	enum dso_kernel_type kernel_type;
++
++	kerninfo = kerninfo__findnew(&session->kerninfo_root, self->mmap.pid);
++	if (!kerninfo) {
++		pr_err("Can't find id %d's kerninfo\n", self->mmap.pid);
++		goto out_problem;
++	}
+ 
+-		if (self->mmap.filename[0] == '/') {
+-			char short_module_name[1024];
+-			char *name = strrchr(self->mmap.filename, '/'), *dot;
+-
+-			if (name == NULL)
+-				goto out_problem;
+-
+-			++name; /* skip / */
+-			dot = strrchr(name, '.');
+-			if (dot == NULL)
+-				goto out_problem;
+-
+-			snprintf(short_module_name, sizeof(short_module_name),
+-				 "[%.*s]", (int)(dot - name), name);
+-			strxfrchar(short_module_name, '-', '_');
+-
+-			map = perf_session__new_module_map(session,
+-							   self->mmap.start,
+-							   self->mmap.filename);
+-			if (map == NULL)
+-				goto out_problem;
+-
+-			name = strdup(short_module_name);
+-			if (name == NULL)
+-				goto out_problem;
+-
+-			map->dso->short_name = name;
+-			map->end = map->start + self->mmap.len;
+-		} else if (memcmp(self->mmap.filename, kmmap_prefix,
++	if (is_host_kernel(kerninfo)) {
++		kmmap_prefix = "[kernel.kallsyms.";
++		short_name = "[kernel.kallsyms]";
++		kernel_type = DSO_TYPE_KERNEL;
++	} else {
++		kmmap_prefix = "[guest.kernel.kallsyms.";
++		short_name = "[guest.kernel.kallsyms]";
++		kernel_type = DSO_TYPE_GUEST_KERNEL;
++	}
++
++	if (self->mmap.filename[0] == '/') {
++
++		char short_module_name[1024];
++		char *name = strrchr(self->mmap.filename, '/'), *dot;
++
++		if (name == NULL)
++			goto out_problem;
++
++		++name; /* skip / */
++		dot = strrchr(name, '.');
++		if (dot == NULL)
++			goto out_problem;
++
++		snprintf(short_module_name, sizeof(short_module_name),
++				"[%.*s]", (int)(dot - name), name);
++		strxfrchar(short_module_name, '-', '_');
++
++		map = map_groups__new_module(&kerninfo->kmaps,
++				self->mmap.start,
++				self->mmap.filename,
++				kerninfo);
++		if (map == NULL)
++			goto out_problem;
++
++		name = strdup(short_module_name);
++		if (name == NULL)
++			goto out_problem;
++
++		map->dso->short_name = name;
++		map->end = map->start + self->mmap.len;
++	} else if (memcmp(self->mmap.filename, kmmap_prefix,
+ 				sizeof(kmmap_prefix) - 1) == 0) {
+-			const char *symbol_name = (self->mmap.filename +
+-						   sizeof(kmmap_prefix) - 1);
++		const char *symbol_name = (self->mmap.filename +
++				sizeof(kmmap_prefix) - 1);
++		/*
++		 * Should be there already, from the build-id table in
++		 * the header.
++		 */
++		struct dso *kernel = __dsos__findnew(&kerninfo->dsos__kernel,
++				short_name);
++		if (kernel == NULL)
++			goto out_problem;
++
++		kernel->kernel = kernel_type;
++		if (__map_groups__create_kernel_maps(&kerninfo->kmaps,
++					kerninfo->vmlinux_maps, kernel) < 0)
++			goto out_problem;
++
++		event_set_kernel_mmap_len(kerninfo->vmlinux_maps, self);
++		perf_session__set_kallsyms_ref_reloc_sym(kerninfo->vmlinux_maps,
++				symbol_name,
++				self->mmap.pgoff);
++		if (is_default_guest(kerninfo)) {
+ 			/*
+-			 * Should be there already, from the build-id table in
+-			 * the header.
++			 * preload dso of guest kernel and modules
+ 			 */
+-			struct dso *kernel = __dsos__findnew(&dsos__kernel,
+-							     "[kernel.kallsyms]");
+-			if (kernel == NULL)
+-				goto out_problem;
+-
+-			kernel->kernel = 1;
+-			if (__perf_session__create_kernel_maps(session, kernel) < 0)
+-				goto out_problem;
++			dso__load(kernel,
++				kerninfo->vmlinux_maps[MAP__FUNCTION],
++				NULL);
++		}
++	}
++	return 0;
++out_problem:
++	return -1;
++}
+ 
+-			session->vmlinux_maps[MAP__FUNCTION]->start = self->mmap.start;
+-			session->vmlinux_maps[MAP__FUNCTION]->end   = self->mmap.start + self->mmap.len;
+-			/*
+-			 * Be a bit paranoid here, some perf.data file came with
+-			 * a zero sized synthesized MMAP event for the kernel.
+-			 */
+-			if (session->vmlinux_maps[MAP__FUNCTION]->end == 0)
+-				session->vmlinux_maps[MAP__FUNCTION]->end = ~0UL;
++int event__process_mmap(event_t *self, struct perf_session *session)
++{
++	struct kernel_info *kerninfo;
++	struct thread *thread;
++	struct map *map;
++	u8 cpumode = self->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
++	int ret = 0;
+ 
+-			perf_session__set_kallsyms_ref_reloc_sym(session, symbol_name,
+-								 self->mmap.pgoff);
+-		}
++	dump_printf(" %d/%d: [%#Lx(%#Lx) @ %#Lx]: %s\n",
++			self->mmap.pid, self->mmap.tid, self->mmap.start,
++			self->mmap.len, self->mmap.pgoff, self->mmap.filename);
++
++	if (cpumode == PERF_RECORD_MISC_GUEST_KERNEL ||
++	    cpumode == PERF_RECORD_MISC_KERNEL) {
++		ret = event__process_kernel_mmap(self, session);
++		if (ret < 0)
++			goto out_problem;
+ 		return 0;
+ 	}
+ 
+ 	thread = perf_session__findnew(session, self->mmap.pid);
+-	map = map__new(self->mmap.start, self->mmap.len, self->mmap.pgoff,
+-		       self->mmap.pid, self->mmap.filename, MAP__FUNCTION,
+-		       session->cwd, session->cwdlen);
++	kerninfo = kerninfo__findhost(&session->kerninfo_root);
++	map = map__new(&kerninfo->dsos__user, self->mmap.start,
++			self->mmap.len, self->mmap.pgoff,
++			self->mmap.pid, self->mmap.filename,
++			MAP__FUNCTION, session->cwd, session->cwdlen);
+ 
+ 	if (thread == NULL || map == NULL)
+ 		goto out_problem;
+@@ -444,22 +539,52 @@ int event__process_task(event_t *self, s
+ 
+ void thread__find_addr_map(struct thread *self,
+ 			   struct perf_session *session, u8 cpumode,
+-			   enum map_type type, u64 addr,
++			   enum map_type type, pid_t pid, u64 addr,
+ 			   struct addr_location *al)
+ {
+ 	struct map_groups *mg = &self->mg;
++	struct kernel_info *kerninfo = NULL;
+ 
+ 	al->thread = self;
+ 	al->addr = addr;
++	al->cpumode = cpumode;
++	al->filtered = false;
+ 
+-	if (cpumode == PERF_RECORD_MISC_KERNEL) {
++	if (cpumode == PERF_RECORD_MISC_KERNEL && perf_host) {
+ 		al->level = 'k';
+-		mg = &session->kmaps;
+-	} else if (cpumode == PERF_RECORD_MISC_USER)
++		kerninfo = kerninfo__findhost(&session->kerninfo_root);
++		mg = &kerninfo->kmaps;
++	} else if (cpumode == PERF_RECORD_MISC_USER && perf_host) {
+ 		al->level = '.';
+-	else {
+-		al->level = 'H';
++		kerninfo = kerninfo__findhost(&session->kerninfo_root);
++	} else if (cpumode == PERF_RECORD_MISC_GUEST_KERNEL && perf_guest) {
++		al->level = 'g';
++		kerninfo = kerninfo__find(&session->kerninfo_root, pid);
++		if (!kerninfo) {
++			al->map = NULL;
++			return;
++		}
++		mg = &kerninfo->kmaps;
++	} else {
++		/*
++		 * 'u' means guest os user space.
++		 * TODO: We don't support guest user space. Might support late.
++		 */
++		if (cpumode == PERF_RECORD_MISC_GUEST_USER && perf_guest)
++			al->level = 'u';
++		else
++			al->level = 'H';
+ 		al->map = NULL;
++
++		if ((cpumode == PERF_RECORD_MISC_GUEST_USER ||
++			cpumode == PERF_RECORD_MISC_GUEST_KERNEL) &&
++			!perf_guest)
++			al->filtered = true;
++		if ((cpumode == PERF_RECORD_MISC_USER ||
++			cpumode == PERF_RECORD_MISC_KERNEL) &&
++			!perf_host)
++			al->filtered = true;
++
+ 		return;
+ 	}
+ try_again:
+@@ -474,8 +599,11 @@ try_again:
+ 		 * "[vdso]" dso, but for now lets use the old trick of looking
+ 		 * in the whole kernel symbol list.
+ 		 */
+-		if ((long long)al->addr < 0 && mg != &session->kmaps) {
+-			mg = &session->kmaps;
++		if ((long long)al->addr < 0 &&
++			cpumode == PERF_RECORD_MISC_KERNEL &&
++			kerninfo &&
++			mg != &kerninfo->kmaps)  {
++			mg = &kerninfo->kmaps;
+ 			goto try_again;
+ 		}
+ 	} else
+@@ -484,11 +612,11 @@ try_again:
+ 
+ void thread__find_addr_location(struct thread *self,
+ 				struct perf_session *session, u8 cpumode,
+-				enum map_type type, u64 addr,
++				enum map_type type, pid_t pid, u64 addr,
+ 				struct addr_location *al,
+ 				symbol_filter_t filter)
+ {
+-	thread__find_addr_map(self, session, cpumode, type, addr, al);
++	thread__find_addr_map(self, session, cpumode, type, pid, addr, al);
+ 	if (al->map != NULL)
+ 		al->sym = map__find_symbol(al->map, al->addr, filter);
+ 	else
+@@ -524,7 +652,7 @@ int event__preprocess_sample(const event
+ 	dump_printf(" ... thread: %s:%d\n", thread->comm, thread->pid);
+ 
+ 	thread__find_addr_map(thread, session, cpumode, MAP__FUNCTION,
+-			      self->ip.ip, al);
++			      self->ip.pid, self->ip.ip, al);
+ 	dump_printf(" ...... dso: %s\n",
+ 		    al->map ? al->map->dso->long_name :
+ 			al->level == 'H' ? "[hypervisor]" : "<not found>");
+@@ -554,7 +682,6 @@ int event__preprocess_sample(const event
+ 	    !strlist__has_entry(symbol_conf.sym_list, al->sym->name))
+ 		goto out_filtered;
+ 
+-	al->filtered = false;
+ 	return 0;
+ 
+ out_filtered:
+diff -Nraup linux-2.6_tip0413/tools/perf/util/event.h linux-2.6_tip0413_perfkvm/tools/perf/util/event.h
+--- linux-2.6_tip0413/tools/perf/util/event.h	2010-04-14 11:11:58.638239002 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/event.h	2010-04-14 14:12:02.533688079 +0800
+@@ -79,6 +79,7 @@ struct sample_data {
+ 
+ struct build_id_event {
+ 	struct perf_event_header header;
++	pid_t			 pid;
+ 	u8			 build_id[ALIGN(BUILD_ID_SIZE, sizeof(u64))];
+ 	char			 filename[];
+ };
+@@ -119,10 +120,13 @@ int event__synthesize_thread(pid_t pid, 
+ void event__synthesize_threads(event__handler_t process,
+ 			       struct perf_session *session);
+ int event__synthesize_kernel_mmap(event__handler_t process,
+-				  struct perf_session *session,
+-				  const char *symbol_name);
++				struct perf_session *session,
++				struct kernel_info *kerninfo,
++				const char *symbol_name);
++
+ int event__synthesize_modules(event__handler_t process,
+-			      struct perf_session *session);
++			      struct perf_session *session,
++			      struct kernel_info *kerninfo);
+ 
+ int event__process_comm(event_t *self, struct perf_session *session);
+ int event__process_lost(event_t *self, struct perf_session *session);
+diff -Nraup linux-2.6_tip0413/tools/perf/util/header.c linux-2.6_tip0413_perfkvm/tools/perf/util/header.c
+--- linux-2.6_tip0413/tools/perf/util/header.c	2010-04-14 11:11:58.594236160 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/header.c	2010-04-14 11:13:17.317861518 +0800
+@@ -197,7 +197,8 @@ static int write_padded(int fd, const vo
+ 			continue;		\
+ 		else
+ 
+-static int __dsos__write_buildid_table(struct list_head *head, u16 misc, int fd)
++static int __dsos__write_buildid_table(struct list_head *head, pid_t pid,
++				u16 misc, int fd)
+ {
+ 	struct dso *pos;
+ 
+@@ -212,6 +213,7 @@ static int __dsos__write_buildid_table(s
+ 		len = ALIGN(len, NAME_ALIGN);
+ 		memset(&b, 0, sizeof(b));
+ 		memcpy(&b.build_id, pos->build_id, sizeof(pos->build_id));
++		b.pid = pid;
+ 		b.header.misc = misc;
+ 		b.header.size = sizeof(b) + len;
+ 		err = do_write(fd, &b, sizeof(b));
+@@ -226,13 +228,33 @@ static int __dsos__write_buildid_table(s
+ 	return 0;
+ }
+ 
+-static int dsos__write_buildid_table(int fd)
++static int dsos__write_buildid_table(struct perf_header *header, int fd)
+ {
+-	int err = __dsos__write_buildid_table(&dsos__kernel,
+-					      PERF_RECORD_MISC_KERNEL, fd);
+-	if (err == 0)
+-		err = __dsos__write_buildid_table(&dsos__user,
+-						  PERF_RECORD_MISC_USER, fd);
++	struct perf_session *session = container_of(header,
++			struct perf_session, header);
++	struct rb_node *nd;
++	int err = 0;
++	u16 kmisc, umisc;
++
++	for (nd = rb_first(&session->kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++				rb_node);
++		if (is_host_kernel(pos)) {
++			kmisc = PERF_RECORD_MISC_KERNEL;
++			umisc = PERF_RECORD_MISC_USER;
++		} else {
++			kmisc = PERF_RECORD_MISC_GUEST_KERNEL;
++			umisc = PERF_RECORD_MISC_GUEST_USER;
++		}
++
++		err = __dsos__write_buildid_table(&pos->dsos__kernel, pos->pid,
++				kmisc, fd);
++		if (err == 0)
++			err = __dsos__write_buildid_table(&pos->dsos__user,
++				pos->pid, umisc, fd);
++		if (err)
++			break;
++	}
+ 	return err;
+ }
+ 
+@@ -349,9 +371,12 @@ static int __dsos__cache_build_ids(struc
+ 	return err;
+ }
+ 
+-static int dsos__cache_build_ids(void)
++static int dsos__cache_build_ids(struct perf_header *self)
+ {
+-	int err_kernel, err_user;
++	struct perf_session *session = container_of(self,
++			struct perf_session, header);
++	struct rb_node *nd;
++	int ret = 0;
+ 	char debugdir[PATH_MAX];
+ 
+ 	snprintf(debugdir, sizeof(debugdir), "%s/%s", getenv("HOME"),
+@@ -360,9 +385,30 @@ static int dsos__cache_build_ids(void)
+ 	if (mkdir(debugdir, 0755) != 0 && errno != EEXIST)
+ 		return -1;
+ 
+-	err_kernel = __dsos__cache_build_ids(&dsos__kernel, debugdir);
+-	err_user   = __dsos__cache_build_ids(&dsos__user, debugdir);
+-	return err_kernel || err_user ? -1 : 0;
++	for (nd = rb_first(&session->kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++				rb_node);
++		ret |= __dsos__cache_build_ids(&pos->dsos__kernel, debugdir);
++		ret |= __dsos__cache_build_ids(&pos->dsos__user, debugdir);
++	}
++	return ret ? -1 : 0;
++}
++
++static bool dsos__read_build_ids(struct perf_header *self, bool with_hits)
++{
++	bool ret = false;
++	struct perf_session *session = container_of(self,
++			struct perf_session, header);
++	struct rb_node *nd;
++
++	for (nd = rb_first(&session->kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++				rb_node);
++		ret |= __dsos__read_build_ids(&pos->dsos__kernel, with_hits);
++		ret |= __dsos__read_build_ids(&pos->dsos__user, with_hits);
++	}
++
++	return ret;
+ }
+ 
+ static int perf_header__adds_write(struct perf_header *self, int fd)
+@@ -373,7 +419,7 @@ static int perf_header__adds_write(struc
+ 	u64 sec_start;
+ 	int idx = 0, err;
+ 
+-	if (dsos__read_build_ids(true))
++	if (dsos__read_build_ids(self, true))
+ 		perf_header__set_feat(self, HEADER_BUILD_ID);
+ 
+ 	nr_sections = bitmap_weight(self->adds_features, HEADER_FEAT_BITS);
+@@ -408,14 +454,14 @@ static int perf_header__adds_write(struc
+ 
+ 		/* Write build-ids */
+ 		buildid_sec->offset = lseek(fd, 0, SEEK_CUR);
+-		err = dsos__write_buildid_table(fd);
++		err = dsos__write_buildid_table(self, fd);
+ 		if (err < 0) {
+ 			pr_debug("failed to write buildid table\n");
+ 			goto out_free;
+ 		}
+ 		buildid_sec->size = lseek(fd, 0, SEEK_CUR) -
+ 					  buildid_sec->offset;
+-		dsos__cache_build_ids();
++		dsos__cache_build_ids(self);
+ 	}
+ 
+ 	lseek(fd, sec_start, SEEK_SET);
+@@ -636,6 +682,72 @@ int perf_file_header__read(struct perf_f
+ 	return 0;
+ }
+ 
++static int perf_header__read_build_ids(struct perf_header *self,
++			int input, u64 offset, u64 size)
++{
++	struct perf_session *session = container_of(self,
++			struct perf_session, header);
++	struct build_id_event bev;
++	char filename[PATH_MAX];
++	u64 limit = offset + size;
++	int err = -1;
++	struct list_head *head;
++	struct kernel_info *kerninfo;
++	u16 misc;
++ 
++	while (offset < limit) {
++		struct dso *dso;
++		ssize_t len;
++		enum dso_kernel_type dso_type;
++
++		if (read(input, &bev, sizeof(bev)) != sizeof(bev))
++			goto out;
++
++		kerninfo = kerninfo__findnew(&session->kerninfo_root, bev.pid);
++		if (!kerninfo)
++			goto out;
++
++		if (self->needs_swap)
++			perf_event_header__bswap(&bev.header);
++
++		len = bev.header.size - sizeof(bev);
++		if (read(input, filename, len) != len)
++			goto out;
++
++		misc = bev.header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
++
++		switch(misc) {
++		case PERF_RECORD_MISC_KERNEL:
++			dso_type = DSO_TYPE_KERNEL;
++			head = &kerninfo->dsos__kernel;
++			break;
++		case PERF_RECORD_MISC_GUEST_KERNEL:
++			dso_type = DSO_TYPE_GUEST_KERNEL;
++			head = &kerninfo->dsos__kernel;
++			break;
++		case PERF_RECORD_MISC_USER:
++		case PERF_RECORD_MISC_GUEST_USER:
++			dso_type = DSO_TYPE_USER;
++			head = &kerninfo->dsos__user;
++			break;
++		default:
++			goto out;
++		}
++
++		dso = __dsos__findnew(head, filename);
++		if (dso != NULL) {
++			dso__set_build_id(dso, &bev.build_id);
++			if (filename[0] == '[')
++				dso->kernel = dso_type;
++		}
++
++		offset += bev.header.size;
++	}
++	err = 0;
++out:
++	return err;
++}
++
+ static int perf_file_section__process(struct perf_file_section *self,
+ 				      struct perf_header *ph,
+ 				      int feat, int fd)
+diff -Nraup linux-2.6_tip0413/tools/perf/util/hist.c linux-2.6_tip0413_perfkvm/tools/perf/util/hist.c
+--- linux-2.6_tip0413/tools/perf/util/hist.c	2010-04-14 11:11:58.766255670 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/hist.c	2010-04-14 16:02:22.299845756 +0800
+@@ -8,6 +8,30 @@ struct callchain_param	callchain_param =
+ 	.min_percent = 0.5
+ };
+ 
++void __perf_session__add_count(struct hist_entry *he,
++			struct addr_location *al,
++			u64 count)
++{
++	he->count += count;
++
++	switch (al->cpumode) {
++	case PERF_RECORD_MISC_KERNEL:
++		he->count_sys += count;
++		break;
++	case PERF_RECORD_MISC_USER:
++		he->count_us += count;
++		break;
++	case PERF_RECORD_MISC_GUEST_KERNEL:
++		he->count_guest_sys += count;
++		break;
++	case PERF_RECORD_MISC_GUEST_USER:
++		he->count_guest_us += count;
++		break;
++	default:
++		break;
++	}
++}
++
+ /*
+  * histogram, sorted on item, collects counts
+  */
+@@ -464,7 +488,7 @@ int hist_entry__snprintf(struct hist_ent
+ 			   u64 session_total)
+ {
+ 	struct sort_entry *se;
+-	u64 count, total;
++	u64 count, total, count_sys, count_us, count_guest_sys, count_guest_us;
+ 	const char *sep = symbol_conf.field_sep;
+ 	int ret;
+ 
+@@ -474,9 +498,17 @@ int hist_entry__snprintf(struct hist_ent
+ 	if (pair_session) {
+ 		count = self->pair ? self->pair->count : 0;
+ 		total = pair_session->events_stats.total;
++		count_sys = self->pair ? self->pair->count_sys : 0;
++		count_us = self->pair ? self->pair->count_us : 0;
++		count_guest_sys = self->pair ? self->pair->count_guest_sys : 0;
++		count_guest_us = self->pair ? self->pair->count_guest_us : 0;
+ 	} else {
+ 		count = self->count;
+ 		total = session_total;
++		count_sys = self->count_sys;
++		count_us = self->count_us;
++		count_guest_sys = self->count_guest_sys;
++		count_guest_us = self->count_guest_us;
+ 	}
+ 
+ 	if (total) {
+@@ -487,6 +519,22 @@ int hist_entry__snprintf(struct hist_ent
+ 		else
+ 			ret = snprintf(s, size, sep ? "%.2f" : "   %6.2f%%",
+ 				       (count * 100.0) / total);
++		if (symbol_conf.show_cpu_utilization) {
++			ret += percent_color_snprintf(s + ret, size - ret,
++					sep ? "%.2f" : "   %6.2f%%",
++					(count_sys * 100.0) / total);
++			ret += percent_color_snprintf(s + ret, size - ret,
++					sep ? "%.2f" : "   %6.2f%%",
++					(count_us * 100.0) / total);
++			if (perf_guest) {
++				ret += percent_color_snprintf(s + ret, size - ret,
++						sep ? "%.2f" : "   %6.2f%%",
++						(count_guest_sys * 100.0) / total);
++				ret += percent_color_snprintf(s + ret, size - ret,
++						sep ? "%.2f" : "   %6.2f%%",
++						(count_guest_us * 100.0) / total);
++			}
++		}
+ 	} else
+ 		ret = snprintf(s, size, sep ? "%lld" : "%12lld ", count);
+ 
+@@ -597,6 +645,24 @@ size_t perf_session__fprintf_hists(struc
+ 			fputs("  Samples  ", fp);
+ 	}
+ 
++	if (symbol_conf.show_cpu_utilization) {
++		if (sep) {
++			ret += fprintf(fp, "%csys", *sep);
++			ret += fprintf(fp, "%cus", *sep);
++			if (perf_guest) {
++				ret += fprintf(fp, "%cguest sys", *sep);
++				ret += fprintf(fp, "%cguest us", *sep);
++			}
++		} else {
++			ret += fprintf(fp, "  sys  ");
++			ret += fprintf(fp, "  us  ");
++			if (perf_guest) {
++				ret += fprintf(fp, "  guest sys  ");
++				ret += fprintf(fp, "  guest us  ");
++			}
++		}
++	}
++
+ 	if (pair) {
+ 		if (sep)
+ 			ret += fprintf(fp, "%cDelta", *sep);
+diff -Nraup linux-2.6_tip0413/tools/perf/util/hist.h linux-2.6_tip0413_perfkvm/tools/perf/util/hist.h
+--- linux-2.6_tip0413/tools/perf/util/hist.h	2010-04-14 11:11:58.674215806 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/hist.h	2010-04-14 11:13:17.317861518 +0800
+@@ -12,6 +12,9 @@ struct addr_location;
+ struct symbol;
+ struct rb_root;
+ 
++void __perf_session__add_count(struct hist_entry *he,
++			struct addr_location *al,
++			u64 count);
+ struct hist_entry *__perf_session__add_hist_entry(struct rb_root *hists,
+ 						  struct addr_location *al,
+ 						  struct symbol *parent,
+diff -Nraup linux-2.6_tip0413/tools/perf/util/map.c linux-2.6_tip0413_perfkvm/tools/perf/util/map.c
+--- linux-2.6_tip0413/tools/perf/util/map.c	2010-04-14 11:11:58.642241284 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/map.c	2010-04-14 16:08:55.377366557 +0800
+@@ -4,6 +4,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <stdio.h>
++#include <unistd.h>
+ #include "map.h"
+ 
+ const char *map_type__name[MAP__NR_TYPES] = {
+@@ -37,9 +38,11 @@ void map__init(struct map *self, enum ma
+ 	self->map_ip   = map__map_ip;
+ 	self->unmap_ip = map__unmap_ip;
+ 	RB_CLEAR_NODE(&self->rb_node);
++	self->groups   = NULL;
+ }
+ 
+-struct map *map__new(u64 start, u64 len, u64 pgoff, u32 pid, char *filename,
++struct map *map__new(struct list_head *dsos__list, u64 start, u64 len,
++		     u64 pgoff, u32 pid, char *filename,
+ 		     enum map_type type, char *cwd, int cwdlen)
+ {
+ 	struct map *self = malloc(sizeof(*self));
+@@ -66,7 +69,7 @@ struct map *map__new(u64 start, u64 len,
+ 			filename = newfilename;
+ 		}
+ 
+-		dso = dsos__findnew(filename);
++		dso = __dsos__findnew(dsos__list, filename);
+ 		if (dso == NULL)
+ 			goto out_delete;
+ 
+@@ -242,6 +245,7 @@ void map_groups__init(struct map_groups 
+ 		self->maps[i] = RB_ROOT;
+ 		INIT_LIST_HEAD(&self->removed_maps[i]);
+ 	}
++	 self->this_kerninfo = NULL;
+ }
+ 
+ void map_groups__flush(struct map_groups *self)
+@@ -508,3 +512,123 @@ struct map *maps__find(struct rb_root *m
+ 
+ 	return NULL;
+ }
++
++struct kernel_info * add_new_kernel_info(struct rb_root *kerninfo_root,
++			pid_t pid, const char * root_dir)
++{
++	struct rb_node **p = &kerninfo_root->rb_node;
++	struct rb_node *parent = NULL;
++	struct kernel_info *kerninfo, *pos;
++
++	kerninfo = malloc(sizeof(struct kernel_info));
++	if (!kerninfo)
++		return NULL;
++
++	kerninfo->pid = pid;
++	map_groups__init(&kerninfo->kmaps);
++	kerninfo->root_dir = strdup(root_dir);
++	RB_CLEAR_NODE(&kerninfo->rb_node);
++	INIT_LIST_HEAD(&kerninfo->dsos__user);
++	INIT_LIST_HEAD(&kerninfo->dsos__kernel);
++	kerninfo->kmaps.this_kerninfo = kerninfo;
++
++	while (*p != NULL) {
++		parent = *p;
++		pos = rb_entry(parent, struct kernel_info, rb_node);
++		if (pid < pos->pid)
++			p = &(*p)->rb_left;
++		else
++			p = &(*p)->rb_right;
++	}
++
++	rb_link_node(&kerninfo->rb_node, parent, p);
++	rb_insert_color(&kerninfo->rb_node, kerninfo_root);
++
++	return kerninfo;
++}
++
++struct kernel_info *kerninfo__find(struct rb_root *kerninfo_root, pid_t pid)
++{
++	struct rb_node **p = &kerninfo_root->rb_node;
++	struct rb_node *parent = NULL;
++	struct kernel_info *kerninfo;
++	struct kernel_info *default_kerninfo = NULL;
++
++	while (*p != NULL) {
++		parent = *p;
++		kerninfo = rb_entry(parent, struct kernel_info, rb_node);
++		if (pid < kerninfo->pid)
++			p = &(*p)->rb_left;
++		else if (pid > kerninfo->pid)
++			p = &(*p)->rb_right;
++		else
++			return kerninfo;
++		if (!kerninfo->pid)
++			default_kerninfo = kerninfo;
++	}
++
++	return default_kerninfo;
++}
++
++struct kernel_info *kerninfo__findhost(struct rb_root *kerninfo_root)
++{
++	struct rb_node **p = &kerninfo_root->rb_node;
++	struct rb_node *parent = NULL;
++	struct kernel_info *kerninfo;
++	pid_t pid = HOST_KERNEL_ID;
++
++	while (*p != NULL) {
++		parent = *p;
++		kerninfo = rb_entry(parent, struct kernel_info, rb_node);
++		if (pid < kerninfo->pid)
++			p = &(*p)->rb_left;
++		else if (pid > kerninfo->pid)
++			p = &(*p)->rb_right;
++		else
++			return kerninfo;
++	}
++
++	return NULL;
++}
++
++struct kernel_info *kerninfo__findnew(struct rb_root *kerninfo_root, pid_t pid)
++{
++	char path[PATH_MAX];
++	const char * root_dir;
++	int ret;
++	struct kernel_info *kerninfo = kerninfo__find(kerninfo_root, pid);
++
++	if (!kerninfo || kerninfo->pid != pid) {
++		if (pid == HOST_KERNEL_ID || pid == DEFAULT_GUEST_KERNEL_ID)
++			root_dir = "";
++		else {
++			if (!symbol_conf.guestmount)
++				goto out;
++			sprintf(path, "%s/%d", symbol_conf.guestmount, pid);
++			ret = access(path, R_OK);
++			if (ret) {
++				pr_err("Can't access file %s\n", path);
++				goto out;
++			}
++			root_dir = path;
++		}
++		kerninfo = add_new_kernel_info(kerninfo_root, pid, root_dir);
++	}
++
++out:
++	return kerninfo;
++}
++
++void kerninfo__process_allkernels(struct rb_root *kerninfo_root,
++		process_kernel_info process,
++		void * data)
++{
++	struct rb_node *nd;
++
++	for (nd = rb_first(kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++							rb_node);
++		process(pos, data);
++	}
++}
++
+diff -Nraup linux-2.6_tip0413/tools/perf/util/map.h linux-2.6_tip0413_perfkvm/tools/perf/util/map.h
+--- linux-2.6_tip0413/tools/perf/util/map.h	2010-04-14 11:11:58.686216105 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/map.h	2010-04-14 16:12:24.683245583 +0800
+@@ -19,6 +19,7 @@ extern const char *map_type__name[MAP__N
+ struct dso;
+ struct ref_reloc_sym;
+ struct map_groups;
++struct kernel_info;
+ 
+ struct map {
+ 	union {
+@@ -36,6 +37,7 @@ struct map {
+ 	u64			(*unmap_ip)(struct map *, u64);
+ 
+ 	struct dso		*dso;
++	struct map_groups	*groups;
+ };
+ 
+ struct kmap {
+@@ -43,6 +45,26 @@ struct kmap {
+ 	struct map_groups	*kmaps;
+ };
+ 
++struct map_groups {
++	struct rb_root		maps[MAP__NR_TYPES];
++	struct list_head	removed_maps[MAP__NR_TYPES];
++	struct kernel_info	*this_kerninfo;
++};
++
++/* Native host kernel uses -1 as pid index in kernel_info */
++#define	HOST_KERNEL_ID			(-1)
++#define	DEFAULT_GUEST_KERNEL_ID		(0)
++
++struct kernel_info {
++	struct rb_node rb_node;
++	pid_t pid;
++	char * root_dir;
++	struct list_head dsos__user;
++	struct list_head dsos__kernel;
++	struct map_groups kmaps;
++	struct map *vmlinux_maps[MAP__NR_TYPES];
++};
++
+ static inline struct kmap *map__kmap(struct map *self)
+ {
+ 	return (struct kmap *)(self + 1);
+@@ -74,7 +96,8 @@ typedef int (*symbol_filter_t)(struct ma
+ 
+ void map__init(struct map *self, enum map_type type,
+ 	       u64 start, u64 end, u64 pgoff, struct dso *dso);
+-struct map *map__new(u64 start, u64 len, u64 pgoff, u32 pid, char *filename,
++struct map *map__new(struct list_head *dsos__list, u64 start, u64 len,
++		     u64 pgoff, u32 pid, char *filename,
+ 		     enum map_type type, char *cwd, int cwdlen);
+ void map__delete(struct map *self);
+ struct map *map__clone(struct map *self);
+@@ -91,11 +114,6 @@ void map__fixup_end(struct map *self);
+ 
+ void map__reloc_vmlinux(struct map *self);
+ 
+-struct map_groups {
+-	struct rb_root		maps[MAP__NR_TYPES];
+-	struct list_head	removed_maps[MAP__NR_TYPES];
+-};
+-
+ size_t __map_groups__fprintf_maps(struct map_groups *self,
+ 				  enum map_type type, int verbose, FILE *fp);
+ void maps__insert(struct rb_root *maps, struct map *map);
+@@ -106,9 +124,39 @@ int map_groups__clone(struct map_groups 
+ size_t map_groups__fprintf(struct map_groups *self, int verbose, FILE *fp);
+ size_t map_groups__fprintf_maps(struct map_groups *self, int verbose, FILE *fp);
+ 
++struct kernel_info * add_new_kernel_info(struct rb_root *kerninfo_root,
++			pid_t pid, const char * root_dir);
++struct kernel_info *kerninfo__find(struct rb_root *kerninfo_root, pid_t pid);
++struct kernel_info *kerninfo__findnew(struct rb_root *kerninfo_root, pid_t pid);
++struct kernel_info *kerninfo__findhost(struct rb_root *kerninfo_root);
++
++/*
++ * Default guest kernel is defined by parameter --guestkallsyms
++ * and --guestmodules
++ */
++static inline int is_default_guest(struct kernel_info * kerninfo)
++{
++	if (!kerninfo)
++		return 0;
++	return kerninfo->pid == DEFAULT_GUEST_KERNEL_ID;
++}
++
++static inline int is_host_kernel(struct kernel_info * kerninfo)
++{
++	if (!kerninfo)
++		return 0;
++	return kerninfo->pid == HOST_KERNEL_ID;
++}
++
++typedef void (*process_kernel_info)(struct kernel_info *kerninfo, void *data);
++void kerninfo__process_allkernels(struct rb_root *kerninfo_root,
++		process_kernel_info process,
++		void * data);
++
+ static inline void map_groups__insert(struct map_groups *self, struct map *map)
+ {
+-	 maps__insert(&self->maps[map->type], map);
++	maps__insert(&self->maps[map->type], map);
++	map->groups = self;
+ }
+ 
+ static inline struct map *map_groups__find(struct map_groups *self,
+@@ -148,13 +196,11 @@ int map_groups__fixup_overlappings(struc
+ 
+ struct map *map_groups__find_by_name(struct map_groups *self,
+ 				     enum map_type type, const char *name);
+-int __map_groups__create_kernel_maps(struct map_groups *self,
+-				     struct map *vmlinux_maps[MAP__NR_TYPES],
+-				     struct dso *kernel);
+-int map_groups__create_kernel_maps(struct map_groups *self,
+-				   struct map *vmlinux_maps[MAP__NR_TYPES]);
+-struct map *map_groups__new_module(struct map_groups *self, u64 start,
+-				   const char *filename);
++struct map *map_groups__new_module(struct map_groups *self,
++				    u64 start,
++				    const char *filename,
++				    struct kernel_info *kerninfo);
++
+ void map_groups__flush(struct map_groups *self);
+ 
+ #endif /* __PERF_MAP_H */
+diff -Nraup linux-2.6_tip0413/tools/perf/util/probe-event.c linux-2.6_tip0413_perfkvm/tools/perf/util/probe-event.c
+--- linux-2.6_tip0413/tools/perf/util/probe-event.c	2010-04-14 11:11:58.614279111 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/probe-event.c	2010-04-14 11:13:17.321860837 +0800
+@@ -78,6 +78,8 @@ static struct map *kmaps[MAP__NR_TYPES];
+ /* Initialize symbol maps and path of vmlinux */
+ static void init_vmlinux(void)
+ {
++	struct dso *kernel;
++
+ 	symbol_conf.sort_by_name = true;
+ 	if (symbol_conf.vmlinux_name == NULL)
+ 		symbol_conf.try_vmlinux_path = true;
+@@ -86,8 +88,12 @@ static void init_vmlinux(void)
+ 	if (symbol__init() < 0)
+ 		die("Failed to init symbol map.");
+ 
++	kernel = dso__new_kernel(symbol_conf.vmlinux_name);
++	if (kernel == NULL)
++		die("Failed to create kernel dso.");
++
+ 	map_groups__init(&kmap_groups);
+-	if (map_groups__create_kernel_maps(&kmap_groups, kmaps) < 0)
++	if (__map_groups__create_kernel_maps(&kmap_groups, kmaps, kernel) < 0)
+ 		die("Failed to create kernel maps.");
+ }
+ 
+diff -Nraup linux-2.6_tip0413/tools/perf/util/session.c linux-2.6_tip0413_perfkvm/tools/perf/util/session.c
+--- linux-2.6_tip0413/tools/perf/util/session.c	2010-04-14 11:11:58.794254600 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/session.c	2010-04-14 16:15:56.564948860 +0800
+@@ -52,6 +52,17 @@ out_close:
+ 	return -1;
+ }
+ 
++int perf_session__create_kernel_maps(struct perf_session *self)
++{
++	int ret;
++	struct rb_root *root = &self->kerninfo_root;
++
++	ret = map_groups__create_kernel_maps(root, HOST_KERNEL_ID);
++	if (ret >= 0)
++		ret = map_groups__create_guest_kernel_maps(root);
++	return ret;
++}
++
+ struct perf_session *perf_session__new(const char *filename, int mode, bool force)
+ {
+ 	size_t len = filename ? strlen(filename) + 1 : 0;
+@@ -71,7 +82,7 @@ struct perf_session *perf_session__new(c
+ 	self->cwd = NULL;
+ 	self->cwdlen = 0;
+ 	self->unknown_events = 0;
+-	map_groups__init(&self->kmaps);
++	self->kerninfo_root = RB_ROOT;
+ 
+ 	if (mode == O_RDONLY) {
+ 		if (perf_session__open(self, force) < 0)
+@@ -142,8 +153,9 @@ struct map_symbol *perf_session__resolve
+ 			continue;
+ 		}
+ 
++		al.filtered = false;
+ 		thread__find_addr_location(thread, self, cpumode,
+-					   MAP__FUNCTION, ip, &al, NULL);
++				MAP__FUNCTION, thread->pid, ip, &al, NULL);
+ 		if (al.sym != NULL) {
+ 			if (sort__has_parent && !*parent &&
+ 			    symbol__match_parent_regex(al.sym))
+@@ -324,46 +336,6 @@ void perf_event_header__bswap(struct per
+ 	self->size = bswap_16(self->size);
+ }
+ 
+-int perf_header__read_build_ids(struct perf_header *self,
+-				int input, u64 offset, u64 size)
+-{
+-	struct build_id_event bev;
+-	char filename[PATH_MAX];
+-	u64 limit = offset + size;
+-	int err = -1;
+-
+-	while (offset < limit) {
+-		struct dso *dso;
+-		ssize_t len;
+-		struct list_head *head = &dsos__user;
+-
+-		if (read(input, &bev, sizeof(bev)) != sizeof(bev))
+-			goto out;
+-
+-		if (self->needs_swap)
+-			perf_event_header__bswap(&bev.header);
+-
+-		len = bev.header.size - sizeof(bev);
+-		if (read(input, filename, len) != len)
+-			goto out;
+-
+-		if (bev.header.misc & PERF_RECORD_MISC_KERNEL)
+-			head = &dsos__kernel;
+-
+-		dso = __dsos__findnew(head, filename);
+-		if (dso != NULL) {
+-			dso__set_build_id(dso, &bev.build_id);
+-			if (head == &dsos__kernel && filename[0] == '[')
+-				dso->kernel = 1;
+-		}
+-
+-		offset += bev.header.size;
+-	}
+-	err = 0;
+-out:
+-	return err;
+-}
+-
+ static struct thread *perf_session__register_idle_thread(struct perf_session *self)
+ {
+ 	struct thread *thread = perf_session__findnew(self, 0);
+@@ -516,26 +488,33 @@ bool perf_session__has_traces(struct per
+ 	return true;
+ }
+ 
+-int perf_session__set_kallsyms_ref_reloc_sym(struct perf_session *self,
++int perf_session__set_kallsyms_ref_reloc_sym(struct map ** maps,
+ 					     const char *symbol_name,
+ 					     u64 addr)
+ {
+ 	char *bracket;
+ 	enum map_type i;
++	struct ref_reloc_sym *ref;
++
++	ref = zalloc(sizeof(struct ref_reloc_sym));
++	if (ref == NULL)
++		return -ENOMEM;
+ 
+-	self->ref_reloc_sym.name = strdup(symbol_name);
+-	if (self->ref_reloc_sym.name == NULL)
++	ref->name = strdup(symbol_name);
++	if (ref->name == NULL) {
++		free(ref);
+ 		return -ENOMEM;
++	}
+ 
+-	bracket = strchr(self->ref_reloc_sym.name, ']');
++	bracket = strchr(ref->name, ']');
+ 	if (bracket)
+ 		*bracket = '\0';
+ 
+-	self->ref_reloc_sym.addr = addr;
++	ref->addr = addr;
+ 
+ 	for (i = 0; i < MAP__NR_TYPES; ++i) {
+-		struct kmap *kmap = map__kmap(self->vmlinux_maps[i]);
+-		kmap->ref_reloc_sym = &self->ref_reloc_sym;
++		struct kmap *kmap = map__kmap(maps[i]);
++		kmap->ref_reloc_sym = ref;
+ 	}
+ 
+ 	return 0;
+diff -Nraup linux-2.6_tip0413/tools/perf/util/session.h linux-2.6_tip0413_perfkvm/tools/perf/util/session.h
+--- linux-2.6_tip0413/tools/perf/util/session.h	2010-04-14 11:11:58.606252925 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/session.h	2010-04-14 11:13:17.321860837 +0800
+@@ -15,17 +15,15 @@ struct perf_session {
+ 	struct perf_header	header;
+ 	unsigned long		size;
+ 	unsigned long		mmap_window;
+-	struct map_groups	kmaps;
+ 	struct rb_root		threads;
+ 	struct thread		*last_match;
+-	struct map		*vmlinux_maps[MAP__NR_TYPES];
++	struct rb_root		kerninfo_root;
+ 	struct events_stats	events_stats;
+ 	struct rb_root		stats_by_id;
+ 	unsigned long		event_total[PERF_RECORD_MAX];
+ 	unsigned long		unknown_events;
+ 	struct rb_root		hists;
+ 	u64			sample_type;
+-	struct ref_reloc_sym	ref_reloc_sym;
+ 	int			fd;
+ 	int			cwdlen;
+ 	char			*cwd;
+@@ -64,33 +62,13 @@ struct map_symbol *perf_session__resolve
+ 
+ bool perf_session__has_traces(struct perf_session *self, const char *msg);
+ 
+-int perf_header__read_build_ids(struct perf_header *self, int input,
+-				u64 offset, u64 file_size);
+-
+-int perf_session__set_kallsyms_ref_reloc_sym(struct perf_session *self,
++int perf_session__set_kallsyms_ref_reloc_sym(struct map ** maps,
+ 					     const char *symbol_name,
+ 					     u64 addr);
+ 
+ void mem_bswap_64(void *src, int byte_size);
+ 
+-static inline int __perf_session__create_kernel_maps(struct perf_session *self,
+-						struct dso *kernel)
+-{
+-	return __map_groups__create_kernel_maps(&self->kmaps,
+-						self->vmlinux_maps, kernel);
+-}
+-
+-static inline int perf_session__create_kernel_maps(struct perf_session *self)
+-{
+-	return map_groups__create_kernel_maps(&self->kmaps, self->vmlinux_maps);
+-}
+-
+-static inline struct map *
+-	perf_session__new_module_map(struct perf_session *self,
+-				     u64 start, const char *filename)
+-{
+-	return map_groups__new_module(&self->kmaps, start, filename);
+-}
++int perf_session__create_kernel_maps(struct perf_session *self);
+ 
+ #ifdef NO_NEWT_SUPPORT
+ static inline int perf_session__browse_hists(struct rb_root *hists __used,
+diff -Nraup linux-2.6_tip0413/tools/perf/util/sort.h linux-2.6_tip0413_perfkvm/tools/perf/util/sort.h
+--- linux-2.6_tip0413/tools/perf/util/sort.h	2010-04-14 11:11:58.610258472 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/sort.h	2010-04-14 11:13:17.321860837 +0800
+@@ -44,6 +44,11 @@ extern enum sort_type sort__first_dimens
+ struct hist_entry {
+ 	struct rb_node		rb_node;
+ 	u64			count;
++	u64			count_sys;
++	u64			count_us;
++	u64			count_guest_sys;
++	u64			count_guest_us;
++
+ 	/*
+ 	 * XXX WARNING!
+ 	 * thread _has_ to come after ms, see
+diff -Nraup linux-2.6_tip0413/tools/perf/util/symbol.c linux-2.6_tip0413_perfkvm/tools/perf/util/symbol.c
+--- linux-2.6_tip0413/tools/perf/util/symbol.c	2010-04-14 11:11:58.614279111 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/symbol.c	2010-04-14 16:51:51.803796961 +0800
+@@ -28,6 +28,8 @@ static void dsos__add(struct list_head *
+ static struct map *map__new2(u64 start, struct dso *dso, enum map_type type);
+ static int dso__load_kernel_sym(struct dso *self, struct map *map,
+ 				symbol_filter_t filter);
++static int dso__load_guest_kernel_sym(struct dso *self, struct map *map,
++			symbol_filter_t filter);
+ static int vmlinux_path__nr_entries;
+ static char **vmlinux_path;
+ 
+@@ -186,6 +188,7 @@ struct dso *dso__new(const char *name)
+ 		self->loaded = 0;
+ 		self->sorted_by_name = 0;
+ 		self->has_build_id = 0;
++		self->kernel = DSO_TYPE_USER;
+ 	}
+ 
+ 	return self;
+@@ -402,12 +405,9 @@ int kallsyms__parse(const char *filename
+ 		char *symbol_name;
+ 
+ 		line_len = getline(&line, &n, file);
+-		if (line_len < 0)
++		if (line_len < 0 || !line)
+ 			break;
+ 
+-		if (!line)
+-			goto out_failure;
+-
+ 		line[--line_len] = '\0'; /* \n */
+ 
+ 		len = hex2u64(line, &start);
+@@ -459,6 +459,7 @@ static int map__process_kallsym_symbol(v
+ 	 * map__split_kallsyms, when we have split the maps per module
+ 	 */
+ 	symbols__insert(root, sym);
++
+ 	return 0;
+ }
+ 
+@@ -489,6 +490,7 @@ static int dso__split_kallsyms(struct ds
+ 	struct rb_root *root = &self->symbols[map->type];
+ 	struct rb_node *next = rb_first(root);
+ 	int kernel_range = 0;
++	const char *root_dir;
+ 
+ 	while (next) {
+ 		char *module;
+@@ -504,15 +506,32 @@ static int dso__split_kallsyms(struct ds
+ 			*module++ = '\0';
+ 
+ 			if (strcmp(curr_map->dso->short_name, module)) {
++				if (curr_map != map &&
++					self->kernel == DSO_TYPE_GUEST_KERNEL &&
++					is_default_guest(kmaps->this_kerninfo)) {
++					/*
++					 * We assume all symbols of a module are continuous in
++					 * kallsyms, so curr_map points to a module and all its
++					 * symbols are in its kmap. Mark it as loaded.
++					 */
++					dso__set_loaded(curr_map->dso, curr_map->type);
++				}
++
+ 				curr_map = map_groups__find_by_name(kmaps, map->type, module);
+ 				if (curr_map == NULL) {
+-					pr_debug("/proc/{kallsyms,modules} "
++					if (kmaps->this_kerninfo)
++						root_dir = kmaps->this_kerninfo->root_dir;
++					else
++						root_dir = "";
++					pr_debug("%s/proc/{kallsyms,modules} "
+ 					         "inconsistency while looking "
+-						 "for \"%s\" module!\n", module);
++						 "for \"%s\" module!\n",
++						 root_dir, module);
+ 					return -1;
+ 				}
+ 
+-				if (curr_map->dso->loaded)
++				if (curr_map->dso->loaded &&
++					!is_default_guest(kmaps->this_kerninfo))
+ 					goto discard_symbol;
+ 			}
+ 			/*
+@@ -525,13 +544,21 @@ static int dso__split_kallsyms(struct ds
+ 			char dso_name[PATH_MAX];
+ 			struct dso *dso;
+ 
+-			snprintf(dso_name, sizeof(dso_name), "[kernel].%d",
+-				 kernel_range++);
++			if (self->kernel == DSO_TYPE_GUEST_KERNEL)
++				snprintf(dso_name, sizeof(dso_name),
++					"[guest.kernel].%d",
++					kernel_range++);
++			else
++				snprintf(dso_name, sizeof(dso_name),
++					"[kernel].%d",
++					kernel_range++);
+ 
+ 			dso = dso__new(dso_name);
+ 			if (dso == NULL)
+ 				return -1;
+ 
++			dso->kernel = self->kernel;
++
+ 			curr_map = map__new2(pos->start, dso, map->type);
+ 			if (curr_map == NULL) {
+ 				dso__delete(dso);
+@@ -555,6 +582,12 @@ discard_symbol:		rb_erase(&pos->rb_node,
+ 		}
+ 	}
+ 
++	if (curr_map != map &&
++	    self->kernel == DSO_TYPE_GUEST_KERNEL &&
++	    is_default_guest(kmaps->this_kerninfo)) {
++		dso__set_loaded(curr_map->dso, curr_map->type);
++	}
++
+ 	return count;
+ }
+ 
+@@ -565,7 +598,10 @@ int dso__load_kallsyms(struct dso *self,
+ 		return -1;
+ 
+ 	symbols__fixup_end(&self->symbols[map->type]);
+-	self->origin = DSO__ORIG_KERNEL;
++	if (self->kernel == DSO_TYPE_GUEST_KERNEL)
++		self->origin = DSO__ORIG_GUEST_KERNEL;
++	else
++		self->origin = DSO__ORIG_KERNEL;
+ 
+ 	return dso__split_kallsyms(self, map, filter);
+ }
+@@ -952,7 +988,7 @@ static int dso__load_sym(struct dso *sel
+ 	nr_syms = shdr.sh_size / shdr.sh_entsize;
+ 
+ 	memset(&sym, 0, sizeof(sym));
+-	if (!self->kernel) {
++	if (self->kernel == DSO_TYPE_USER) {
+ 		self->adjust_symbols = (ehdr.e_type == ET_EXEC ||
+ 				elf_section_by_name(elf, &ehdr, &shdr,
+ 						     ".gnu.prelink_undo",
+@@ -984,7 +1020,7 @@ static int dso__load_sym(struct dso *sel
+ 
+ 		section_name = elf_sec__name(&shdr, secstrs);
+ 
+-		if (self->kernel || kmodule) {
++		if (self->kernel != DSO_TYPE_USER || kmodule) {
+ 			char dso_name[PATH_MAX];
+ 
+ 			if (strcmp(section_name,
+@@ -1011,6 +1047,7 @@ static int dso__load_sym(struct dso *sel
+ 				curr_dso = dso__new(dso_name);
+ 				if (curr_dso == NULL)
+ 					goto out_elf_end;
++				curr_dso->kernel = self->kernel;
+ 				curr_map = map__new2(start, curr_dso,
+ 						     map->type);
+ 				if (curr_map == NULL) {
+@@ -1021,7 +1058,7 @@ static int dso__load_sym(struct dso *sel
+ 				curr_map->unmap_ip = identity__map_ip;
+ 				curr_dso->origin = self->origin;
+ 				map_groups__insert(kmap->kmaps, curr_map);
+-				dsos__add(&dsos__kernel, curr_dso);
++				dsos__add(&self->node, curr_dso);
+ 				dso__set_loaded(curr_dso, map->type);
+ 			} else
+ 				curr_dso = curr_map->dso;
+@@ -1083,7 +1120,7 @@ static bool dso__build_id_equal(const st
+ 	return memcmp(self->build_id, build_id, sizeof(self->build_id)) == 0;
+ }
+ 
+-static bool __dsos__read_build_ids(struct list_head *head, bool with_hits)
++bool __dsos__read_build_ids(struct list_head *head, bool with_hits)
+ {
+ 	bool have_build_id = false;
+ 	struct dso *pos;
+@@ -1101,13 +1138,6 @@ static bool __dsos__read_build_ids(struc
+ 	return have_build_id;
+ }
+ 
+-bool dsos__read_build_ids(bool with_hits)
+-{
+-	bool kbuildids = __dsos__read_build_ids(&dsos__kernel, with_hits),
+-	     ubuildids = __dsos__read_build_ids(&dsos__user, with_hits);
+-	return kbuildids || ubuildids;
+-}
+-
+ /*
+  * Align offset to 4 bytes as needed for note name and descriptor data.
+  */
+@@ -1242,6 +1272,8 @@ char dso__symtab_origin(const struct dso
+ 		[DSO__ORIG_BUILDID] =  'b',
+ 		[DSO__ORIG_DSO] =      'd',
+ 		[DSO__ORIG_KMODULE] =  'K',
++		[DSO__ORIG_GUEST_KERNEL] =  'g',
++		[DSO__ORIG_GUEST_KMODULE] =  'G',
+ 	};
+ 
+ 	if (self == NULL || self->origin == DSO__ORIG_NOT_FOUND)
+@@ -1257,11 +1289,20 @@ int dso__load(struct dso *self, struct m
+ 	char build_id_hex[BUILD_ID_SIZE * 2 + 1];
+ 	int ret = -1;
+ 	int fd;
++	struct kernel_info *kerninfo;
++	const char *root_dir;
+ 
+ 	dso__set_loaded(self, map->type);
+ 
+-	if (self->kernel)
++	if (self->kernel == DSO_TYPE_KERNEL)
+ 		return dso__load_kernel_sym(self, map, filter);
++	else if (self->kernel == DSO_TYPE_GUEST_KERNEL)
++		return dso__load_guest_kernel_sym(self, map, filter);
++
++	if (map->groups && map->groups->this_kerninfo)
++		kerninfo = map->groups->this_kerninfo;
++	else
++		kerninfo = NULL;
+ 
+ 	name = malloc(size);
+ 	if (!name)
+@@ -1315,6 +1356,13 @@ more:
+ 		case DSO__ORIG_DSO:
+ 			snprintf(name, size, "%s", self->long_name);
+ 			break;
++		case DSO__ORIG_GUEST_KMODULE:
++			if (map->groups && map->groups->this_kerninfo)
++				root_dir = map->groups->this_kerninfo->root_dir;
++			else
++				root_dir = "";
++			snprintf(name, size, "%s%s", root_dir, self->long_name);
++			break;
+ 
+ 		default:
+ 			goto out;
+@@ -1368,7 +1416,8 @@ struct map *map_groups__find_by_name(str
+ 	return NULL;
+ }
+ 
+-static int dso__kernel_module_get_build_id(struct dso *self)
++static int dso__kernel_module_get_build_id(struct dso *self,
++				const char * root_dir)
+ {
+ 	char filename[PATH_MAX];
+ 	/*
+@@ -1378,8 +1427,8 @@ static int dso__kernel_module_get_build_
+ 	const char *name = self->short_name + 1;
+ 
+ 	snprintf(filename, sizeof(filename),
+-		 "/sys/module/%.*s/notes/.note.gnu.build-id",
+-		 (int)strlen(name - 1), name);
++		 "%s/sys/module/%.*s/notes/.note.gnu.build-id",
++		 root_dir, (int)strlen(name) - 1, name);
+ 
+ 	if (sysfs__read_build_id(filename, self->build_id,
+ 				 sizeof(self->build_id)) == 0)
+@@ -1388,7 +1437,8 @@ static int dso__kernel_module_get_build_
+ 	return 0;
+ }
+ 
+-static int map_groups__set_modules_path_dir(struct map_groups *self, char *dir_name)
++static int map_groups__set_modules_path_dir(struct map_groups *self,
++				const char *dir_name)
+ {
+ 	struct dirent *dent;
+ 	DIR *dir = opendir(dir_name);
+@@ -1400,8 +1450,14 @@ static int map_groups__set_modules_path_
+ 
+ 	while ((dent = readdir(dir)) != NULL) {
+ 		char path[PATH_MAX];
++		struct stat st;
++
++		/*sshfs might return bad dent->d_type, so we have to stat*/
++		sprintf(path, "%s/%s", dir_name, dent->d_name);
++		if (stat(path, &st))
++			continue;
+ 
+-		if (dent->d_type == DT_DIR) {
++		if (S_ISDIR(st.st_mode)) {
+ 			if (!strcmp(dent->d_name, ".") ||
+ 			    !strcmp(dent->d_name, ".."))
+ 				continue;
+@@ -1433,7 +1489,7 @@ static int map_groups__set_modules_path_
+ 			if (long_name == NULL)
+ 				goto failure;
+ 			dso__set_long_name(map->dso, long_name);
+-			dso__kernel_module_get_build_id(map->dso);
++			dso__kernel_module_get_build_id(map->dso, "");
+ 		}
+ 	}
+ 
+@@ -1443,16 +1499,46 @@ failure:
+ 	return -1;
+ }
+ 
+-static int map_groups__set_modules_path(struct map_groups *self)
++static char * get_kernel_version(const char * root_dir)
+ {
+-	struct utsname uts;
++	char version[PATH_MAX];
++	FILE *file;
++	char *name, *tmp;
++	const char * prefix="Linux version ";
++
++	sprintf(version, "%s/proc/version", root_dir);
++	file = fopen(version, "r");
++	if (!file)
++		return NULL;
++
++	version[0] = '\0';
++	tmp = fgets(version, sizeof(version), file);
++	fclose(file);
++
++	name = strstr(version, prefix);
++	if (!name)
++		return NULL;
++	name += strlen(prefix);
++	tmp = strchr(name, ' ');
++	if (tmp)
++		*tmp = '\0';
++
++	return strdup(name);
++}
++
++static int map_groups__set_modules_path(struct map_groups *self,
++				const char * root_dir)
++{
++	char *version;
+ 	char modules_path[PATH_MAX];
+ 
+-	if (uname(&uts) < 0)
++	version = get_kernel_version(root_dir);
++	if (!version)
+ 		return -1;
+ 
+-	snprintf(modules_path, sizeof(modules_path), "/lib/modules/%s/kernel",
+-		 uts.release);
++	snprintf(modules_path, sizeof(modules_path), "%s/lib/modules/%s/kernel",
++		 root_dir, version);
++	free(version);
+ 
+ 	return map_groups__set_modules_path_dir(self, modules_path);
+ }
+@@ -1477,11 +1563,13 @@ static struct map *map__new2(u64 start, 
+ }
+ 
+ struct map *map_groups__new_module(struct map_groups *self, u64 start,
+-				   const char *filename)
++				const char *filename,
++				struct kernel_info *kerninfo)
+ {
+ 	struct map *map;
+-	struct dso *dso = __dsos__findnew(&dsos__kernel, filename);
++	struct dso *dso;
+ 
++	dso = __dsos__findnew(&kerninfo->dsos__kernel, filename);
+ 	if (dso == NULL)
+ 		return NULL;
+ 
+@@ -1489,21 +1577,37 @@ struct map *map_groups__new_module(struc
+ 	if (map == NULL)
+ 		return NULL;
+ 
+-	dso->origin = DSO__ORIG_KMODULE;
++	if (is_host_kernel(kerninfo))
++		dso->origin = DSO__ORIG_KMODULE;
++	else
++		dso->origin = DSO__ORIG_GUEST_KMODULE;
+ 	map_groups__insert(self, map);
+ 	return map;
+ }
+ 
+-static int map_groups__create_modules(struct map_groups *self)
++static int map_groups__create_modules(struct kernel_info *kerninfo)
+ {
+ 	char *line = NULL;
+ 	size_t n;
+-	FILE *file = fopen("/proc/modules", "r");
++	FILE *file;
+ 	struct map *map;
++	const char * root_dir;
++	const char *modules;
++	char path[PATH_MAX];
++
++	if(is_default_guest(kerninfo))
++		modules = symbol_conf.default_guest_modules;
++	else {
++		sprintf(path, "%s/proc/modules", kerninfo->root_dir);
++		modules = path;
++	}
+ 
++	file = fopen(modules, "r");
+ 	if (file == NULL)
+ 		return -1;
+ 
++	root_dir = kerninfo->root_dir;
++
+ 	while (!feof(file)) {
+ 		char name[PATH_MAX];
+ 		u64 start;
+@@ -1532,16 +1636,17 @@ static int map_groups__create_modules(st
+ 		*sep = '\0';
+ 
+ 		snprintf(name, sizeof(name), "[%s]", line);
+-		map = map_groups__new_module(self, start, name);
++		map = map_groups__new_module(&kerninfo->kmaps,
++				start, name, kerninfo);
+ 		if (map == NULL)
+ 			goto out_delete_line;
+-		dso__kernel_module_get_build_id(map->dso);
++		dso__kernel_module_get_build_id(map->dso, root_dir);
+ 	}
+ 
+ 	free(line);
+ 	fclose(file);
+ 
+-	return map_groups__set_modules_path(self);
++	return map_groups__set_modules_path(&kerninfo->kmaps, root_dir);
+ 
+ out_delete_line:
+ 	free(line);
+@@ -1708,8 +1813,54 @@ out_fixup:
+ 	return err;
+ }
+ 
+-LIST_HEAD(dsos__user);
+-LIST_HEAD(dsos__kernel);
++static int dso__load_guest_kernel_sym(struct dso *self, struct map *map,
++				symbol_filter_t filter)
++{
++	int err;
++	const char *kallsyms_filename = NULL;
++	struct kernel_info *kerninfo;
++	char path[PATH_MAX];
++
++	if (!map->groups) {
++		pr_debug("Guest kernel map hasn't the point to groups\n");
++		return -1;
++	}
++	kerninfo = map->groups->this_kerninfo;
++
++	if (is_default_guest(kerninfo)) {
++		/*
++		 * if the user specified a vmlinux filename, use it and only
++		 * it, reporting errors to the user if it cannot be used.
++		 * Or use file guest_kallsyms inputted by user on commandline
++		 */
++		if (symbol_conf.default_guest_vmlinux_name != NULL) {
++			err = dso__load_vmlinux(self, map,
++				symbol_conf.default_guest_vmlinux_name, filter);
++			goto out_try_fixup;
++		}
++
++		kallsyms_filename = symbol_conf.default_guest_kallsyms;
++		if (!kallsyms_filename)
++			return -1;
++	} else {
++		sprintf(path, "%s/proc/kallsyms", kerninfo->root_dir);
++		kallsyms_filename = path;
++	}
++
++	err = dso__load_kallsyms(self, kallsyms_filename, map, filter);
++	if (err > 0)
++		pr_debug("Using %s for symbols\n", kallsyms_filename);
++
++out_try_fixup:
++	if (err > 0) {
++		if (kallsyms_filename != NULL)
++			dso__set_long_name(self, strdup("[guest.kernel.kallsyms]"));
++		map__fixup_start(map);
++		map__fixup_end(map);
++	}
++
++	return err;
++}
+ 
+ static void dsos__add(struct list_head *head, struct dso *dso)
+ {
+@@ -1752,10 +1903,16 @@ static void __dsos__fprintf(struct list_
+ 	}
+ }
+ 
+-void dsos__fprintf(FILE *fp)
++void dsos__fprintf(struct rb_root *kerninfo_root, FILE *fp)
+ {
+-	__dsos__fprintf(&dsos__kernel, fp);
+-	__dsos__fprintf(&dsos__user, fp);
++	struct rb_node *nd;
++
++	for (nd = rb_first(kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++				rb_node);
++		__dsos__fprintf(&pos->dsos__kernel, fp);
++		__dsos__fprintf(&pos->dsos__user, fp);
++	}
+ }
+ 
+ static size_t __dsos__fprintf_buildid(struct list_head *head, FILE *fp,
+@@ -1773,10 +1930,21 @@ static size_t __dsos__fprintf_buildid(st
+ 	return ret;
+ }
+ 
+-size_t dsos__fprintf_buildid(FILE *fp, bool with_hits)
++size_t dsos__fprintf_buildid(struct rb_root *kerninfo_root,
++		FILE *fp, bool with_hits)
+ {
+-	return (__dsos__fprintf_buildid(&dsos__kernel, fp, with_hits) +
+-		__dsos__fprintf_buildid(&dsos__user, fp, with_hits));
++	struct rb_node *nd;
++	size_t ret = 0;
++
++	for (nd = rb_first(kerninfo_root); nd; nd = rb_next(nd)) {
++		struct kernel_info *pos = rb_entry(nd, struct kernel_info,
++				rb_node);
++		ret += __dsos__fprintf_buildid(&pos->dsos__kernel,
++					fp, with_hits);
++		ret += __dsos__fprintf_buildid(&pos->dsos__user,
++					fp, with_hits);
++	}
++	return ret;
+ }
+ 
+ struct dso *dso__new_kernel(const char *name)
+@@ -1785,28 +1953,55 @@ struct dso *dso__new_kernel(const char *
+ 
+ 	if (self != NULL) {
+ 		dso__set_short_name(self, "[kernel]");
+-		self->kernel	 = 1;
++		self->kernel = DSO_TYPE_KERNEL;
++	}
++
++	return self;
++}
++
++struct dso *dso__new_guest_kernel(const char *name)
++{
++	struct dso *self = dso__new(name ?: "[guest.kernel.kallsyms]");
++
++	if (self != NULL) {
++		dso__set_short_name(self, "[guest.kernel]");
++		self->kernel = DSO_TYPE_GUEST_KERNEL;
+ 	}
+ 
+ 	return self;
+ }
+ 
+-void dso__read_running_kernel_build_id(struct dso *self)
++void dso__read_running_kernel_build_id(struct dso *self,
++			struct kernel_info *kerninfo)
+ {
+-	if (sysfs__read_build_id("/sys/kernel/notes", self->build_id,
++	char path[PATH_MAX];
++
++	if (is_default_guest(kerninfo))
++		return;
++	sprintf(path, "%s/sys/kernel/notes", kerninfo->root_dir);
++	if (sysfs__read_build_id(path, self->build_id,
+ 				 sizeof(self->build_id)) == 0)
+ 		self->has_build_id = true;
+ }
+ 
+-static struct dso *dsos__create_kernel(const char *vmlinux)
++static struct dso *dsos__create_kernel(struct kernel_info *kerninfo)
+ {
+-	struct dso *kernel = dso__new_kernel(vmlinux);
++	const char * vmlinux_name = NULL;
++	struct dso *kernel;
+ 
+-	if (kernel != NULL) {
+-		dso__read_running_kernel_build_id(kernel);
+-		dsos__add(&dsos__kernel, kernel);
++	if (is_host_kernel(kerninfo)) {
++		vmlinux_name = symbol_conf.vmlinux_name;
++		kernel = dso__new_kernel(vmlinux_name);
++	} else {
++		if (is_default_guest(kerninfo))
++			vmlinux_name = symbol_conf.default_guest_vmlinux_name;
++		kernel = dso__new_guest_kernel(vmlinux_name);
+ 	}
+ 
++	if (kernel != NULL) {
++		dso__read_running_kernel_build_id(kernel, kerninfo);
++		dsos__add(&kerninfo->dsos__kernel, kernel);
++	}
+ 	return kernel;
+ }
+ 
+@@ -1950,23 +2145,29 @@ out_free_comm_list:
+ 	return -1;
+ }
+ 
+-int map_groups__create_kernel_maps(struct map_groups *self,
+-				   struct map *vmlinux_maps[MAP__NR_TYPES])
++int map_groups__create_kernel_maps(struct rb_root *kerninfo_root, pid_t pid)
+ {
+-	struct dso *kernel = dsos__create_kernel(symbol_conf.vmlinux_name);
++	struct kernel_info *kerninfo;
++	struct dso *kernel;
+ 
++	kerninfo = kerninfo__findnew(kerninfo_root, pid);
++	if (kerninfo == NULL)
++		return -1;
++	kernel = dsos__create_kernel(kerninfo);
+ 	if (kernel == NULL)
+ 		return -1;
+ 
+-	if (__map_groups__create_kernel_maps(self, vmlinux_maps, kernel) < 0)
++	if (__map_groups__create_kernel_maps(&kerninfo->kmaps,
++			kerninfo->vmlinux_maps, kernel) < 0)
+ 		return -1;
+ 
+-	if (symbol_conf.use_modules && map_groups__create_modules(self) < 0)
++	if (symbol_conf.use_modules &&
++		map_groups__create_modules(kerninfo) < 0)
+ 		pr_debug("Problems creating module maps, continuing anyway...\n");
+ 	/*
+ 	 * Now that we have all the maps created, just set the ->end of them:
+ 	 */
+-	map_groups__fixup_end(self);
++	map_groups__fixup_end(&kerninfo->kmaps);
+ 	return 0;
+ }
+ 
+@@ -2012,3 +2213,47 @@ char *strxfrchar(char *s, char from, cha
+ 
+ 	return s;
+ }
++
++int map_groups__create_guest_kernel_maps(struct rb_root *kerninfo_root)
++{
++	int ret = 0;
++	struct dirent **namelist = NULL;
++	int i, items = 0;
++	char path[PATH_MAX];
++	pid_t pid;
++
++	if (symbol_conf.default_guest_vmlinux_name ||
++	    symbol_conf.default_guest_modules ||
++	    symbol_conf.default_guest_kallsyms) {
++		map_groups__create_kernel_maps(kerninfo_root,
++					DEFAULT_GUEST_KERNEL_ID);
++	}
++
++	if (symbol_conf.guestmount) {
++		items = scandir(symbol_conf.guestmount, &namelist, NULL, NULL);
++		if (items <= 0)
++			return -ENOENT;
++		for (i = 0; i < items; i++) {
++			if (!isdigit(namelist[i]->d_name[0])) {
++				/* Filter out . and .. */
++				continue;
++			}
++			pid = atoi(namelist[i]->d_name);
++			sprintf(path, "%s/%s/proc/kallsyms",
++				symbol_conf.guestmount,
++				namelist[i]->d_name);
++			ret = access(path, R_OK);
++			if (ret) {
++				pr_debug("Can't access file %s\n", path);
++				goto failure;
++			}
++			map_groups__create_kernel_maps(kerninfo_root,
++							pid);
++		}
++failure:
++		free(namelist);
++	}
++
++	return ret;
++}
++
+diff -Nraup linux-2.6_tip0413/tools/perf/util/symbol.h linux-2.6_tip0413_perfkvm/tools/perf/util/symbol.h
+--- linux-2.6_tip0413/tools/perf/util/symbol.h	2010-04-14 11:11:58.766255670 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/symbol.h	2010-04-14 11:13:17.321860837 +0800
+@@ -69,10 +69,15 @@ struct symbol_conf {
+ 			show_nr_samples,
+ 			use_callchain,
+ 			exclude_other,
+-			full_paths;
++			full_paths,
++			show_cpu_utilization;
+ 	const char	*vmlinux_name,
+ 			*field_sep;
+-	char            *dso_list_str,
++	const char	*default_guest_vmlinux_name,
++			*default_guest_kallsyms,
++			*default_guest_modules;
++	const char	*guestmount;
++	char		*dso_list_str,
+ 			*comm_list_str,
+ 			*sym_list_str,
+ 			*col_width_list_str;
+@@ -106,6 +111,13 @@ struct addr_location {
+ 	u64	      addr;
+ 	char	      level;
+ 	bool	      filtered;
++	unsigned int  cpumode;
++};
++
++enum dso_kernel_type {
++	DSO_TYPE_USER = 0,
++	DSO_TYPE_KERNEL,
++	DSO_TYPE_GUEST_KERNEL
+ };
+ 
+ struct dso {
+@@ -115,7 +127,7 @@ struct dso {
+ 	u8		 adjust_symbols:1;
+ 	u8		 slen_calculated:1;
+ 	u8		 has_build_id:1;
+-	u8		 kernel:1;
++	enum dso_kernel_type	kernel;
+ 	u8		 hit:1;
+ 	u8		 annotate_warned:1;
+ 	unsigned char	 origin;
+@@ -131,6 +143,7 @@ struct dso {
+ 
+ struct dso *dso__new(const char *name);
+ struct dso *dso__new_kernel(const char *name);
++struct dso *dso__new_guest_kernel(const char *name);
+ void dso__delete(struct dso *self);
+ 
+ bool dso__loaded(const struct dso *self, enum map_type type);
+@@ -143,34 +156,30 @@ static inline void dso__set_loaded(struc
+ 
+ void dso__sort_by_name(struct dso *self, enum map_type type);
+ 
+-extern struct list_head dsos__user, dsos__kernel;
+-
+ struct dso *__dsos__findnew(struct list_head *head, const char *name);
+ 
+-static inline struct dso *dsos__findnew(const char *name)
+-{
+-	return __dsos__findnew(&dsos__user, name);
+-}
+-
+ int dso__load(struct dso *self, struct map *map, symbol_filter_t filter);
+ int dso__load_vmlinux_path(struct dso *self, struct map *map,
+ 			   symbol_filter_t filter);
+ int dso__load_kallsyms(struct dso *self, const char *filename, struct map *map,
+ 		       symbol_filter_t filter);
+-void dsos__fprintf(FILE *fp);
+-size_t dsos__fprintf_buildid(FILE *fp, bool with_hits);
++void dsos__fprintf(struct rb_root *kerninfo_root, FILE *fp);
++size_t dsos__fprintf_buildid(struct rb_root *kerninfo_root,
++		FILE *fp, bool with_hits);
+ 
+ size_t dso__fprintf_buildid(struct dso *self, FILE *fp);
+ size_t dso__fprintf(struct dso *self, enum map_type type, FILE *fp);
+ 
+ enum dso_origin {
+ 	DSO__ORIG_KERNEL = 0,
++	DSO__ORIG_GUEST_KERNEL,
+ 	DSO__ORIG_JAVA_JIT,
+ 	DSO__ORIG_BUILD_ID_CACHE,
+ 	DSO__ORIG_FEDORA,
+ 	DSO__ORIG_UBUNTU,
+ 	DSO__ORIG_BUILDID,
+ 	DSO__ORIG_DSO,
++	DSO__ORIG_GUEST_KMODULE,
+ 	DSO__ORIG_KMODULE,
+ 	DSO__ORIG_NOT_FOUND,
+ };
+@@ -178,19 +187,26 @@ enum dso_origin {
+ char dso__symtab_origin(const struct dso *self);
+ void dso__set_long_name(struct dso *self, char *name);
+ void dso__set_build_id(struct dso *self, void *build_id);
+-void dso__read_running_kernel_build_id(struct dso *self);
++void dso__read_running_kernel_build_id(struct dso *self,
++		struct kernel_info *kerninfo);
+ struct symbol *dso__find_symbol(struct dso *self, enum map_type type, u64 addr);
+ struct symbol *dso__find_symbol_by_name(struct dso *self, enum map_type type,
+ 					const char *name);
+ 
+ int filename__read_build_id(const char *filename, void *bf, size_t size);
+ int sysfs__read_build_id(const char *filename, void *bf, size_t size);
+-bool dsos__read_build_ids(bool with_hits);
++bool __dsos__read_build_ids(struct list_head *head, bool with_hits);
+ int build_id__sprintf(const u8 *self, int len, char *bf);
+ int kallsyms__parse(const char *filename, void *arg,
+ 		    int (*process_symbol)(void *arg, const char *name,
+ 					  char type, u64 start));
+ 
++int __map_groups__create_kernel_maps(struct map_groups *self,
++			struct map *vmlinux_maps[MAP__NR_TYPES],
++			struct dso *kernel);
++int map_groups__create_kernel_maps(struct rb_root *kerninfo_root, pid_t pid);
++int map_groups__create_guest_kernel_maps(struct rb_root *kerninfo_root);
++
+ int symbol__init(void);
+ bool symbol_type__is_a(char symbol_type, enum map_type map_type);
+ 
+diff -Nraup linux-2.6_tip0413/tools/perf/util/thread.h linux-2.6_tip0413_perfkvm/tools/perf/util/thread.h
+--- linux-2.6_tip0413/tools/perf/util/thread.h	2010-04-14 11:11:58.594236160 +0800
++++ linux-2.6_tip0413_perfkvm/tools/perf/util/thread.h	2010-04-14 11:13:17.321860837 +0800
+@@ -33,12 +33,12 @@ static inline struct map *thread__find_m
+ 
+ void thread__find_addr_map(struct thread *self,
+ 			   struct perf_session *session, u8 cpumode,
+-			   enum map_type type, u64 addr,
++			   enum map_type type, pid_t pid, u64 addr,
+ 			   struct addr_location *al);
+ 
+ void thread__find_addr_location(struct thread *self,
+ 				struct perf_session *session, u8 cpumode,
+-				enum map_type type, u64 addr,
++				enum map_type type, pid_t pid, u64 addr,
+ 				struct addr_location *al,
+ 				symbol_filter_t filter);
+ #endif	/* __PERF_THREAD_H */

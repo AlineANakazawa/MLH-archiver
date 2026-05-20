@@ -1,0 +1,123 @@
+Return-Path: <tony.zhu@intel.com>
+Received: from smtp1.osuosl.org (smtp1.osuosl.org [IPv6:2605:bc80:3010::138])
+ by lists.linuxfoundation.org (Postfix) with ESMTP id 237FDC002A
+ for <accel-config@lists.linuxfoundation.org>;
+ Wed, 19 Apr 2023 07:24:11 +0000 (UTC)
+Received: from localhost (localhost [127.0.0.1])
+ by smtp1.osuosl.org (Postfix) with ESMTP id D460D814B1
+ for <accel-config@lists.linuxfoundation.org>;
+ Wed, 19 Apr 2023 07:24:10 +0000 (UTC)
+DKIM-Filter: OpenDKIM Filter v2.11.0 smtp1.osuosl.org D460D814B1
+Authentication-Results: smtp1.osuosl.org;
+ dkim=pass (2048-bit key) header.d=intel.com header.i=@intel.com
+ header.a=rsa-sha256 header.s=Intel header.b=lVB4+bpb
+X-Virus-Scanned: amavisd-new at osuosl.org
+X-Spam-Flag: NO
+X-Spam-Score: -4.399
+X-Spam-Level: 
+X-Spam-Status: No, score=-4.399 tagged_above=-999 required=5
+ tests=[BAYES_00=-1.9, DKIMWL_WL_HIGH=-0.001, DKIM_SIGNED=0.1,
+ DKIM_VALID=-0.1, DKIM_VALID_AU=-0.1, DKIM_VALID_EF=-0.1,
+ RCVD_IN_DNSWL_MED=-2.3, RCVD_IN_MSPIKE_H3=0.001,
+ RCVD_IN_MSPIKE_WL=0.001, SPF_HELO_NONE=0.001, SPF_PASS=-0.001]
+ autolearn=ham autolearn_force=no
+Received: from smtp1.osuosl.org ([127.0.0.1])
+ by localhost (smtp1.osuosl.org [127.0.0.1]) (amavisd-new, port 10024)
+ with ESMTP id LmJ53qeTmG7z
+ for <accel-config@lists.linuxfoundation.org>;
+ Wed, 19 Apr 2023 07:24:10 +0000 (UTC)
+X-Greylist: domain auto-whitelisted by SQLgrey-1.8.0
+DKIM-Filter: OpenDKIM Filter v2.11.0 smtp1.osuosl.org 4C71E81570
+Received: from mga01.intel.com (mga01.intel.com [192.55.52.88])
+ by smtp1.osuosl.org (Postfix) with ESMTPS id 4C71E81570
+ for <accel-config@lists.linuxfoundation.org>;
+ Wed, 19 Apr 2023 07:24:10 +0000 (UTC)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple;
+ d=intel.com; i=@intel.com; q=dns/txt; s=Intel;
+ t=1681889050; x=1713425050;
+ h=from:to:cc:subject:date:message-id:in-reply-to:
+ references:mime-version:content-transfer-encoding;
+ bh=Q9kKYMm613hOttCiA1EsnHs2o6Z0MpT3f7TkZk+9E2Y=;
+ b=lVB4+bpbi/sCHBWygC1aIaedIzm15W/FnnvBqI1oHFs49CyuO4ylIgGf
+ aml/0A6CIbrLWKRYg/FXEtKMpBVuux3J0Gw1D4h+/5bqNV220Cm645153
+ wwoFxYtwf0SJ1kUFY6Gl7/Kjijo+TiDso/NaJEQ2KQBcW3bZFDof5d6za
+ zYR3T0S6U8MEUnC+KICIulNow4aw+EmIVu0ZjyR0kxqpNIOMPq9FICet7
+ Fdvf0P0A4pOw82+/KgJIheB33W8JJ3hz+JFV5P0bYLHFbn6XryoPj8QTV
+ /sQXOI/1GRC/mdKRHHJICadSooooESSlshaFGWhEHNAQiu2SDDiHyUgyv Q==;
+X-IronPort-AV: E=McAfee;i="6600,9927,10684"; a="373257121"
+X-IronPort-AV: E=Sophos;i="5.99,208,1677571200"; d="scan'208";a="373257121"
+Received: from fmsmga006.fm.intel.com ([10.253.24.20])
+ by fmsmga101.fm.intel.com with ESMTP/TLS/ECDHE-RSA-AES256-GCM-SHA384;
+ 19 Apr 2023 00:24:00 -0700
+X-ExtLoop1: 1
+X-IronPort-AV: E=McAfee;i="6600,9927,10684"; a="937555423"
+X-IronPort-AV: E=Sophos;i="5.99,208,1677571200"; d="scan'208";a="937555423"
+Received: from tonydev.sh.intel.com ([10.239.182.127])
+ by fmsmga006.fm.intel.com with ESMTP; 19 Apr 2023 00:23:57 -0700
+From: Tony Zhu <tony.zhu@intel.com>
+To: accel-config@lists.linuxfoundation.org, ramesh.thomas@intel.com,
+ fenghua.yu@intel.com
+Date: Wed, 19 Apr 2023 15:23:53 +0800
+Message-Id: <20230419072353.2803927-3-tony.zhu@intel.com>
+X-Mailer: git-send-email 2.27.0
+In-Reply-To: <20230419072353.2803927-1-tony.zhu@intel.com>
+References: <20230419072353.2803927-1-tony.zhu@intel.com>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+Cc: rex.zhang@intel.com
+Subject: [Accel-config] [PATCH v1 2/2] accel-config: Fix batch event log
+	core check output issues
+X-BeenThere: accel-config@lists.linuxfoundation.org
+X-Mailman-Version: 2.1.15
+Precedence: list
+List-Id: accel-config <accel-config.lists.linuxfoundation.org>
+List-Unsubscribe: <https://lists.linuxfoundation.org/mailman/options/accel-config>, 
+ <mailto:accel-config-request@lists.linuxfoundation.org?subject=unsubscribe>
+List-Archive: <http://lists.linuxfoundation.org/pipermail/accel-config/>
+List-Post: <mailto:accel-config@lists.linuxfoundation.org>
+List-Help: <mailto:accel-config-request@lists.linuxfoundation.org?subject=help>
+List-Subscribe: <https://lists.linuxfoundation.org/mailman/listinfo/accel-config>, 
+ <mailto:accel-config-request@lists.linuxfoundation.org?subject=subscribe>
+X-List-Received-Date: Wed, 19 Apr 2023 07:24:11 -0000
+
+When event log test core result and status are not expect, error
+messages are ouput. But the return is still success. The expect behavior
+is to return the failure after the error message.
+
+Signed-off-by: Tony Zhu <tony.zhu@intel.com>
+---
+ test/dsa.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/test/dsa.c b/test/dsa.c
+index e9cc55a..38ff358 100644
+--- a/test/dsa.c
++++ b/test/dsa.c
+@@ -2199,15 +2199,21 @@ int batch_result_verify(struct batch_task *btsk, int bof, int cpfault)
+ 		bdi = &edl->bdi;
+ 		printf("res 0x%x core_stat 0x%x nr_desc %d\n",
+ 		       res, core_stat, nr_desc);
+-		if (res != bdi->result)
++		if (res != bdi->result) {
+ 			err("core result (0x%x) expected (0x%x)\n",
+ 			    res, bdi->result);
+-		if (core_stat != bdi->status)
++			return ACCTEST_STATUS_FAIL;
++		}
++		if (core_stat != bdi->status) {
+ 			err("core status (0x%x) expected (0x%x)\n",
+ 			    core_stat, bdi->status);
+-		if (res && bdi->desc_completed != nr_desc)
++			return ACCTEST_STATUS_FAIL;
++		}
++		if (res && bdi->desc_completed != nr_desc) {
+ 			err("core descs completed (0x%x) expected (0x%x)\n",
+ 			    nr_desc, bdi->desc_completed);
++			return ACCTEST_STATUS_FAIL;
++		}
+ 	} else {
+ 		if (core_stat == DSA_COMP_SUCCESS) {
+ 			info("core task success, chekcing sub-tasks\n");
+-- 
+2.27.0
+

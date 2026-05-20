@@ -201,6 +201,10 @@ pub fn parse_headers_file(headers_file: &Path) -> HashMap<String, String> {
         }
     }
 
+    if let Some(ref key) = current_header {
+        headers.insert(key.clone(), current_value.clone());
+    }
+
     headers
 }
 

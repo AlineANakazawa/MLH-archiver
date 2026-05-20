@@ -1,8 +1,12 @@
 # Variables for the analysis script
 LISTS_OF_INTEREST ?=
 ANALYSIS_SCRIPT ?=
+N_PROC ?=
+MAX_TOTAL_THREADS ?=
 export LISTS_OF_INTEREST
 export ANALYSIS_SCRIPT
+export N_PROC
+export MAX_TOTAL_THREADS
 # end of variables for the analysis script
 
 # By default, 'make' will run the 'all' target

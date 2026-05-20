@@ -4,40 +4,75 @@ import os
 import multiprocessing
 import math
 
-from mlh_anonymizer.constants import N_PROC_DEFAULT_MAX
+"""
+MAX_TOTAL_THREADS = total thread budget (workers + polars threads per worker).
+  - Defaults to half the available CPU cores.
+  - N_PROC env var: explicit override for worker process count.
+  - POLARS_MAX_THREADS env var: explicit override for polars threads per worker.
+  - If neither is set, split MAX_TOTAL_THREADS automatically:
+      * total <= 1  → 1 worker, 2 polars threads (minimum)
+      * total <= 10 → 1 worker, rest to polars (min 2)
+      * total > 10  → 40% workers, 60% polars threads
+"""
 
-# ── Determine concurrency split ───────────────────────────────────
-# Strategy: keep worker-process count low, give Polars a healthy
-# share of threads per process for I/O and native parallelism.
-# Multiplier / N_PROC_DEFAULT_MAX control the balance.
-# Both values are overridable via environment variables.
-
-_cpu_count = multiprocessing.cpu_count()
-
-_proc_multiplier_denominator = 12
+cpu_count = multiprocessing.cpu_count()
 
 
-def _parse_n_proc() -> int:
-    """Parse N_PROC from environment variable.
+def _parse_max_total_threads() -> int:
+    """Parse MAX_TOTAL_THREADS from environment variable.
 
     Returns:
-        Number of processes to use
+        Total thread budget (defaults to half the available CPU cores).
+    """
+    total_env = os.getenv("MAX_TOTAL_THREADS", "")
+    if total_env.isdecimal():
+        return int(total_env)
+    return max(1, cpu_count // 2)
+
+
+def split_workers(total: int) -> tuple[int, int]:
+    """Split total thread budget into (n_proc, polars_threads).
+
+    Args:
+        total: Maximum total threads to allocate.
+
+    Returns:
+        Tuple of (worker processes, polars threads per worker).
+    """
+    if total <= 1:
+        return 1, 2
+    if total <= 10:
+        return 1, max(2, total - 1)
+    n_proc = max(1, math.ceil(total * 0.4))
+    polars = max(2, total - n_proc)
+    return n_proc, polars
+
+
+def compute_concurrency() -> tuple[int, int]:
+    """Resolve final N_PROC and POLARS_MAX_THREADS.
+
+    Explicit env vars take precedence over the auto-split.
+
+    Returns:
+        Tuple of (n_proc, polars_threads).
     """
     n_proc_env = os.getenv("N_PROC", "")
-    if n_proc_env.isdecimal():
-        return int(n_proc_env)
-    return max(1, min(math.ceil(_cpu_count / _proc_multiplier_denominator), N_PROC_DEFAULT_MAX))
+    polars_env = os.getenv("POLARS_MAX_THREADS", "")
+    total = _parse_max_total_threads()
+
+    auto_n_proc, auto_polars = split_workers(total)
+
+    n_proc = int(n_proc_env) if n_proc_env.isdecimal() else auto_n_proc
+    polars_threads = int(polars_env) if polars_env.isdecimal() else auto_polars
+
+    return n_proc, polars_threads
 
 
 # Set POLARS_MAX_THREADS in the environment *before* any polars import.
 # Polars reads this env var at init time; if unset it defaults to all CPUs,
 # which combined with multiprocessing workers exhausts OS thread limits.
-_polars_threads_env = os.getenv("POLARS_MAX_THREADS", "")
-if _polars_threads_env:
-    os.environ["POLARS_MAX_THREADS"] = _polars_threads_env
-else:
-    _n_proc = _parse_n_proc()
-    os.environ["POLARS_MAX_THREADS"] = str(max(4, _cpu_count // (_n_proc + 1)))
+_N_PROC, _POLARS_THREADS = compute_concurrency()
+os.environ["POLARS_MAX_THREADS"] = str(_POLARS_THREADS)
 
 
 def _is_debug() -> bool:
@@ -51,12 +86,13 @@ def _is_debug() -> bool:
 
 # Runtime configuration
 DEBUG: bool = _is_debug()
-N_PROC: int = _parse_n_proc()
+N_PROC: int = _N_PROC
 
-# Override N_PROC for debug mode
+# Override for debug mode: single-worker, single polars thread
 if DEBUG:
     N_PROC = 1
-    print(f"Running in DEBUG mode. N_PROC {N_PROC}")
+    os.environ["POLARS_MAX_THREADS"] = "1"
+    print(f"Running in DEBUG mode. N_PROC={N_PROC}")
 
 # List of specific mailing lists to parse (empty = parse all)
 LISTS_TO_PARSE: list[str] = [

@@ -4,9 +4,6 @@ This module contains column definitions and other constants
 that define the anonymization schema.
 """
 
-# Default maximum number of processes (used as a ceiling by configs.py)
-N_PROC_DEFAULT_MAX = 8
-
 # Columns to anonymize with direct SHA-1 hashing
 ANONYMIZE_COLUMNS = [
     "from",

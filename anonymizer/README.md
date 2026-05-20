@@ -116,10 +116,37 @@ The following fields are typically anonymized:
 
 Configuration is done via environment variables:
 
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `INPUT_DIR` | Directory containing parsed Parquet files |
+| `OUTPUT_DIR` | Output directory for anonymized files |
+
+### Concurrency
+
+Thread allocation is controlled by three variables. Explicit `N_PROC` and `POLARS_MAX_THREADS` take precedence over the automatic split described below.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INPUT_DIR` | `/input` | Directory containing parsed Parquet files |
-| `OUTPUT_DIR` | `/output` | Output directory for anonymized files |
+| `MAX_TOTAL_THREADS` | half CPU cores | Total thread budget (worker processes + Polars threads per worker) |
+| `N_PROC` | auto | Number of multiprocessing worker processes. Overrides the auto-split. |
+| `POLARS_MAX_THREADS` | auto | Number of threads per Polars worker. Overrides the auto-split. |
+
+When `N_PROC` and `POLARS_MAX_THREADS` are both unset, the script splits `MAX_TOTAL_THREADS` automatically:
+
+| Budget (`MAX_TOTAL_THREADS`) | Workers (`N_PROC`) | Polars threads |
+|------------------------------|---------------------|----------------|
+| ≤ 1                          | 1                   | 2              |
+| 2–10                         | 1                   | remainder (min 2) |
+| > 10                         | 40% of budget       | 60% of budget  |
+
+### Other
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEBUG` | `false` | Set to `true` to force single-worker, single-thread sequential execution |
+| `LISTS_TO_PARSE` | _(all)_ | Comma-separated list of mailing list names to process |
 
 ### Docker Compose Configuration
 

@@ -611,7 +611,7 @@ checksum = "f4ad8f11f288f48ca24471bbd51ac257aaeaaa07adae295591266b792902ae64"
 dependencies = [
  "cargo-lock",
  "chrono",
- "git2",
+ "git2 0.20.4",
  "semver",
 ]
 
@@ -695,7 +695,7 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger",
- "git2",
+ "git2 0.21.0",
  "inquire",
  "log",
  "mlh_archiver",
@@ -963,6 +963,17 @@ dependencies = [
  "darling_core",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dateparser"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa7c3b5f25f753dcbf8f77a535166e08cba151529b6df9be966984053a68cf39"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "regex",
 ]
 
 [[package]]
@@ -1313,6 +1324,18 @@ dependencies = [
  "libgit2-sys",
  "log",
  "url",
+]
+
+[[package]]
+name = "git2"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
+dependencies = [
+ "bitflags",
+ "libc",
+ "libgit2-sys",
+ "log",
 ]
 
 [[package]]
@@ -2077,7 +2100,7 @@ dependencies = [
  "crossbeam-channel",
  "ctrlc",
  "env_logger",
- "git2",
+ "git2 0.21.0",
  "glob",
  "globset",
  "inquire",
@@ -2113,6 +2136,7 @@ dependencies = [
  "clap",
  "config",
  "ctrlc",
+ "dateparser",
  "env_logger",
  "glob",
  "log",

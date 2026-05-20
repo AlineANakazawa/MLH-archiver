@@ -1,67 +1,108 @@
 mod common;
 
 use chrono::DateTime;
-use common::{list_files_with_extension, map_to_file_extensions, parse_date_file};
-use mlh_parser::date_parser::{parse_date_tentative_raw, process_date};
-use mlh_parser::email_reader::{decode_mail, get_headers};
+use common::parse_date_file;
+use mlh_parser::date_parser::parse_date_string;
+use mlh_parser::email_parser::parse_email;
 use std::fs;
 
 #[test]
-#[ignore = "date parsing parity with Python needs iteration"]
-fn test_correct_email() {
-    let directory = "./date_cases/";
-    let email_files = list_files_with_extension(directory, ".eml");
+fn test_millennium_dates() {
+    let millennium_cases = vec![
+        // These rfc2822 style dates are handled by chrono
+        // 2 digit year
+        ("Mon, 3 Jan 78 18:27:37", "Mon, 3 Jan 1978 18:27:37"),
+        ("Mon, 3 Jan 99 18:27:37", "Mon, 3 Jan 1999 18:27:37"),
+        // 2 digit year became a 3 digit when the year 2000 started
+        ("Mon, 3 Jan 100 18:27:37", "Mon, 3 Jan 2000 18:27:37"),
+        ("Mon, 3 Jan 101 18:27:37", "Mon, 3 Jan 2001 18:27:37"),
+        // same issue but padded with a zero
+        ("Mon, 3 Jan 0100 18:27:37", "Mon, 3 Jan 2000 18:27:37"),
+        ("Mon, 3 Jan 0120 18:27:37", "Mon, 3 Jan 2020 18:27:37"),
+        (
+            "Mon, 3 Jan 0120 18:27:37 -0400",
+            "Mon, 3 Jan 2020 18:27:37 -0400",
+        ),
+        (
+            "Tue,  4 Nov 101 22:14:47 +0000 (UTC)",
+            "Tue,  4 Nov 2001 22:14:47 +0000 (UTC)",
+        ),
+        // ISO 8601 / RFC 3339 format with millennium dates
+        // 4-digit zero-padded year
+        ("0103-09-29T10:34:51-04:00", "2003-09-29T10:34:51-04:00"),
+        ("0121-01-15T08:30:00Z", "2021-01-15T08:30:00Z"),
+        ("0105-03-14 14:30:00-05:00", "2005-03-14 14:30:00-05:00"),
+        // 2-digit year
+        ("99-12-31T23:59:59Z", "1999-12-31T23:59:59Z"),
+        ("78-06-01T12:00:00+01:00", "1978-06-01T12:00:00+01:00"),
+        // 3-digit year
+        ("101-06-15T16:30:00-07:00", "2001-06-15T16:30:00-07:00"),
+        // space separator (not T)
+        ("0102-08-22 10:00:00Z", "2002-08-22 10:00:00Z"),
+        ("0103-09-29T10:34:51-04:00", "2003-09-29T10:34:51-04:00"),
+        ("0121-01-15T08:30:00Z", "2021-01-15T08:30:00Z"),
+        ("0105-03-14 14:30:00-05:00", "2005-03-14 14:30:00-05:00"),
+    ];
 
-    for email_file in &email_files {
-        let fixtures = map_to_file_extensions(email_file, &[".date.expected"]);
-        if fixtures.is_empty() {
-            continue;
-        }
-        let date_file = &fixtures[0];
+    let now = DateTime::from_timestamp(1734748800, 0)
+        .expect("Should be able to read time")
+        .into();
 
-        if !date_file.exists() {
-            continue;
-        }
-
-        let mail_bytes = fs::read(email_file).unwrap();
-        let expected_date_str = parse_date_file(date_file);
-        if expected_date_str.is_empty() {
-            continue;
-        }
-        let expected_date = parse_date_tentative_raw(&expected_date_str);
-
-        let msg = decode_mail(&mail_bytes).unwrap();
-        let mut headers = get_headers(&msg);
-
-        let now = DateTime::from_timestamp(1734748800, 0).unwrap().into();
-        process_date(&mut headers, now);
-
-        if let (Some(expected), Some(actual_str)) = (expected_date, headers.get("date"))
-            && let Ok(actual) = DateTime::parse_from_rfc3339(actual_str)
-        {
-            assert_eq!(actual, expected, "Date mismatch for {:?}", email_file);
-        }
+    for (found_str, expected_str) in millennium_cases {
+        let found_date = parse_date_string(found_str).expect("Parse should not be None");
+        let expected_date = parse_date_string(expected_str).expect("Parse should not be None");
+        let fixed = mlh_parser::date_parser::fix_millennium_date(found_date, now);
+        assert_eq!(fixed, expected_date, "Failed for {}", found_str);
     }
 }
 
 #[test]
-#[ignore = "date parsing parity with Python needs iteration"]
-fn test_millennium_dates() {
-    let millennium_cases = vec![
-        ("Mon, 3 Jan 78 18:27:37", "Mon, 3 Jan 1978 18:27:37"),
-        ("Mon, 3 Jan 99 18:27:37", "Mon, 3 Jan 99 18:27:37"),
-        ("Mon, 3 Jan 100 18:27:37", "Mon, 3 Jan 2000 18:27:37"),
-        ("Mon, 3 Jan 0100 18:27:37", "Mon, 3 Jan 2000 18:27:37"),
-        ("Mon, 3 Jan 101 18:27:37", "Mon, 3 Jan 2001 18:27:37"),
-        ("Mon, 3 Jan 0120 18:27:37", "Mon, 3 Jan 2020 18:27:37"),
-    ];
+fn test_email_dates() {
+    let directory = "./fixtures/";
+    let pairs = common::list_fixture_pairs(directory, ".date.expected");
 
-    let now = DateTime::from_timestamp(1734748800, 0).unwrap().into();
+    if pairs.is_empty() {
+        panic!("test cases missing")
+    }
 
-    for (found_str, expected_str) in millennium_cases {
-        let found_date = parse_date_tentative_raw(found_str).unwrap();
-        let expected_date = parse_date_tentative_raw(expected_str).unwrap();
-        let fixed = mlh_parser::date_parser::fix_millennium_date(found_date, now);
-        assert_eq!(fixed, expected_date, "Failed for {}", found_str);
+    // TODO: this should reflect the maximum real date in tests.
+    // I will only cause problems if new cases are introduced with dates in the future
+    // relative to this one:
+    // Mon May 18 2026 00:02:36 GMT+0000
+    let now = DateTime::from_timestamp(1779062556, 0).unwrap().into();
+
+    for (date_file, email_file) in &pairs {
+        let mail_bytes = fs::read(email_file).unwrap();
+
+        let expected_date_str = parse_date_file(date_file);
+        if expected_date_str.is_empty() {
+            continue;
+        }
+
+        let expected_date = parse_date_string(&expected_date_str);
+
+        assert!(
+            expected_date.is_some(),
+            "expected_date fate failed to parse {:?}",
+            email_file
+        );
+
+        let expected_date = expected_date.expect("Expected Date should parse");
+
+        let mail = parse_email(&mail_bytes, now).expect("Parse should not fail");
+
+        let acctual_date = mail.date;
+        assert!(
+            acctual_date.is_some(),
+            "Parser date missing {:?}",
+            email_file
+        );
+
+        assert_eq!(
+            acctual_date.expect("Date should be present"),
+            expected_date,
+            "Date mismatch for {:?}",
+            email_file
+        );
     }
 }

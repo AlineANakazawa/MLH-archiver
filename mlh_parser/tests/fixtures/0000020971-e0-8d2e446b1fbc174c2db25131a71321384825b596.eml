@@ -1,0 +1,31 @@
+From: Villalovos, John L <john.l.villalovos@intel.com>
+Date: Thu Jan 29 18:21:39 2004
+Subject: [Ocfs2-devel] RE: Playing with OCFS2
+Message-ID: <50D19C3AC815734C9E19FE4C4F6128A602A5685A@orsmsx403.jf.intel.com>
+List-Id: <ocfs2-devel.oss.oracle.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+To: ocfs2-devel@oss.oracle.com
+
+> > 
+> > I then tried to mount the volume:
+> > 	mount -t ocfs /dev/sda1 /ocfs
+> > 
+> > 	waited for awhile and it returned but no drive was mounted :(
+> > 
+> > So I'm not sure what I did wrong.
+> > 
+> > Any suggestions would be appreciated.
+> 
+> The filesystem type for OCFS2 is "ocfs2", not "ocfs". Not 
+> sure why it would
+> take a long time with "ocfs" though..
+> 
+> Try with "ocfs2" and see what happens.
+
+
+Sorry my mistake.  I did it run it before with ocfs2.  A did a spelling
+error in my previous message :(
+
+John

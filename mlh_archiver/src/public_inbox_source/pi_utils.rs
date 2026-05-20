@@ -463,7 +463,7 @@ pub fn extract_email_from_commit(
 
     let blob_oid = tree
         .iter()
-        .find(|entry| entry.name() == Some("m"))
+        .find(|entry| entry.name() == Ok("m"))
         .map(|entry| entry.id());
 
     match blob_oid {

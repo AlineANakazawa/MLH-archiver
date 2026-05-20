@@ -4,7 +4,9 @@ version = "0.2.0"
 edition = "2024"
 
 [dependencies]
+mlh_archiver = { path="../mlh_archiver/" }
 
+rayon = "1.12"
 anyhow = "1.0"
 built = { version = "0.8", features = ["chrono", "semver" ] }
 chrono = { version = "0.4", default-features = false, features = [
@@ -27,13 +29,12 @@ thiserror = "2.0"
 regex = "1"
 glob = "0.3"
 
-mlh_archiver = { path="../mlh_archiver/" }
+mail-parser = { version = "0.11", features = ["full_encoding"] }
+dateparser = "0.3.1"
 
 #parquet
 arrow = { version="58.3"}
-mail-parser = { version = "0.11", features = ["full_encoding"] }
 parquet = { version="58.3" }
-rayon = "1.12"
 
 
 [dev-dependencies]

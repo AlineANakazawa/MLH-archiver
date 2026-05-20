@@ -1,0 +1,38 @@
+From: victor <victor@ambra.ro>
+Subject: grub problem
+Date: Sat, 28 Feb 2004 09:43:24 +0000 (UTC)
+Sender: xen-devel-admin@lists.sourceforge.net
+Message-ID: <74EBA342.9000302@ambra.ro>
+Mime-Version: 1.0
+Content-Type: text/plain; charset=us-ascii; format=flowed
+Content-Transfer-Encoding: 7bit
+Return-path: <xen-devel-admin@lists.sourceforge.net>
+Errors-To: xen-devel-admin@lists.sourceforge.net
+List-Unsubscribe: <https://lists.sourceforge.net/lists/listinfo/xen-devel>,
+	<mailto:xen-devel-request@lists.sourceforge.net?subject=unsubscribe>
+List-Post: <mailto:xen-devel@lists.sourceforge.net>
+List-Help: <mailto:xen-devel-request@lists.sourceforge.net?subject=help>
+List-Subscribe: <https://lists.sourceforge.net/lists/listinfo/xen-devel>,
+	<mailto:xen-devel-request@lists.sourceforge.net?subject=subscribe>
+List-Archive: <http://sourceforge.net/mailarchive/forum.php?forum=xen-devel>
+Date: Sat, 28 Feb 2032 11:50:10 -0500
+To: xen-devel@lists.sourceforge.net
+List-Id: xen-devel@lists.xenproject.org
+
+I'm trying to install xen 1.2 from the cd.
+I formated the filesystem and copied it from the cd.
+I must install grub now.
+I do grub-install /dev/sda /mnt/root
+The error is ioctl 00001261 not supported by xl_block
+The file /mnt/root/boot/grub/stage1 not read correctly
+
+This file exists.
+Thank you.
+
+
+
+-------------------------------------------------------
+SF.Net is sponsored by: Speed Start Your Linux Apps Now.
+Build and deploy apps & Web services for Linux with
+a free DVD software kit from IBM. Click Now!
+http://ads.osdn.com/?ad_id=1356&alloc_id=3438&op=click

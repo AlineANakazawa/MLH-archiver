@@ -1,0 +1,27 @@
+Hello accel-config users!
+
+I am pleased to announce accel-config-v4.1.8 stable release.
+
+Changes:
+  Jerry Snitselaar
+  - Check for error return from iaa_do_crypto
+  - Clean up resource leak in accfg_wq_get_occupancy
+
+  shangsong2
+  - Update dsa_config_test_runner.sh
+
+You can clone this version using git from:
+     https://github.com/intel/idxd-config.git
+     Branch: stable
+     Tag: accel-config-v4.1.8
+	https://github.com/intel/idxd-config/releases/tag/accel-config-v4.1.8
+    
+Link to stable branch:
+     https://github.com/intel/idxd-config/tree/stable
+
+The zip and tar.gz of source code can be downloaded from:
+https://github.com/intel/idxd-config/archive/refs/tags/accel-config-v4.1.8.zip
+https://github.com/intel/idxd-config/archive/refs/tags/accel-config-v4.1.8.tar.gz
+
+Regards,
+Ramesh

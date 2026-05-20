@@ -1,0 +1,49 @@
+From: victor <victor@ambra.ro>
+Subject: module 8021q
+Date: Thu, 18 Mar 2004 09:37:36 +0000 (UTC)
+Sender: xen-devel-admin@lists.sourceforge.net
+Message-ID: <7504AE7D.3030904@ambra.ro>
+Mime-Version: 1.0
+Content-Type: text/plain; charset=us-ascii; format=flowed
+Content-Transfer-Encoding: 7bit
+Return-path: <xen-devel-admin@lists.sourceforge.net>
+Errors-To: xen-devel-admin@lists.sourceforge.net
+List-Unsubscribe: <https://lists.sourceforge.net/lists/listinfo/xen-devel>,
+	<mailto:xen-devel-request@lists.sourceforge.net?subject=unsubscribe>
+List-Post: <mailto:xen-devel@lists.sourceforge.net>
+List-Help: <mailto:xen-devel-request@lists.sourceforge.net?subject=help>
+List-Subscribe: <https://lists.sourceforge.net/lists/listinfo/xen-devel>,
+	<mailto:xen-devel-request@lists.sourceforge.net?subject=subscribe>
+List-Archive: <http://sourceforge.net/mailarchive/forum.php?forum=xen-devel>
+Date: Thu, 18 Mar 2032 11:44:45 -0500
+To: xen-devel@lists.sourceforge.net
+List-Id: xen-devel@lists.xenproject.org
+
+I compiled the module 8021q in the xen kernel.
+Now I want to add a new vlan:
+
+[root@xen victor]# [root@xen root]# vconfig add eth0 5
+WARNING:  Could not open /proc/net/vlan/config.  Maybe you need to load the 8021q module, or maybe you are not using PROCFS??
+ERROR: trying to add VLAN #5 to IF -:eth0:-  error: Package not installed
+
+
+The module 8021q could not be loaded, so I tried manualy:
+
+[root@xen root]# insmod 8021q
+Using /lib/modules/2.4.24-xeno/kernel/net/8021q/8021q.o
+/lib/modules/2.4.24-xeno/kernel/net/8021q/8021q.o: unresolved symbol dev_change_flags
+/lib/modules/2.4.24-xeno/kernel/net/8021q/8021q.o: unresolved symbol vlan_ioctl_hook
+
+
+Thank you.
+
+
+
+
+
+
+-------------------------------------------------------
+This SF.Net email is sponsored by: IBM Linux Tutorials
+Free Linux tutorial presented by Daniel Robbins, President and CEO of
+GenToo technologies. Learn everything from fundamentals to system
+administration.http://ads.osdn.com/?ad_id=1470&alloc_id=3638&op=click

@@ -6,10 +6,19 @@ use mlh_parser::email_parser::parse_email;
 use std::fs;
 
 #[test]
+// TODO: add other validations here. This test only validates if the parser fails with any email
 fn test_complete_parser() {
-    let directory = "./complete_cases/";
+    let directory = "./fixtures/";
     let email_files = list_files_with_extension(directory, ".eml");
-    let now = DateTime::from_timestamp(1734748800, 0).unwrap().into();
+
+    // TODO: this should reflect the maximum real date in tests.
+    // I will only cause problems if new cases are introduced with dates in the future
+    // relative to this one:
+    let now = DateTime::from_timestamp(1779062556, 0).unwrap().into();
+
+    if email_files.is_empty() {
+        panic!("test cases missing")
+    }
 
     for email_file in &email_files {
         let mail_bytes = match fs::read(email_file) {
@@ -19,17 +28,23 @@ fn test_complete_parser() {
 
         match parse_email(&mail_bytes, now) {
             Ok(r) => {
-                if r.raw_body.is_empty() {
-                    eprintln!("Skipping {:?}: empty body", email_file);
-                    continue;
+                if !r.raw_body.is_empty() {
+                    for trailer in &r.trailers {
+                        assert!(
+                            trailer.attribution.ends_with("-by"),
+                            "Invalid attribution: {:?}",
+                            trailer.attribution
+                        );
+                    }
                 }
-                for trailer in &r.trailers {
-                    assert!(
-                        trailer.attribution.ends_with("-by"),
-                        "Invalid attribution: {:?}",
-                        trailer.attribution
-                    );
-                }
+                assert!(r.date.is_some(), "Date missing for email {:?}", email_file);
+                assert!(
+                    !r.from.is_empty(),
+                    "From missing for email {:?}",
+                    email_file
+                );
+                assert!(!r.to.is_empty(), "TO missing for email {:?}", email_file);
+                assert!(!r.subject.is_empty(), "Subject missing for email {:?}", email_file);
             }
             Err(e) => {
                 eprintln!("Failed to parse {:?}: {}", email_file, e);

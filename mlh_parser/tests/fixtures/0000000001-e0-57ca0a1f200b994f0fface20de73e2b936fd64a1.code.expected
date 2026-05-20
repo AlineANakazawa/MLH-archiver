@@ -1,5 +1,4 @@
-["""
----
+["""---
  drivers/gpu/drm/amd/amdgpu/amdgpu.h           |  3 +-
  .../gpu/drm/amd/amdgpu/amdgpu_amdkfd_gpuvm.c  | 15 +++-
  drivers/gpu/drm/amd/amdgpu/amdgpu_device.c    | 77 +++++++++++++++----

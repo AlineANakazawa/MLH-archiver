@@ -1,0 +1,14 @@
+Are you sure about bad memory?
+
+Single-bit errors will be corrected; double-bit errors will generate NMI.
+You can also find memory errors with an exerciser.  Unfortunately,
+trusty memtest86 bombs on my ServerWorks machine.  Instead I use
+
+	http://www.qcc.sk.ca/~charlesc/software/memtester/
+
+which runs in user-mode.  I diagnosed thermal problems by running
+this utility.  Within 3 minutes of cold start, it raised main memory
+temperature sufficiently to induce a hard error, which was detected
+simultaneously by it and the hardware (NMI taken by kernel).
+
+Can you recommend one of your (shorter) tests for me to try?

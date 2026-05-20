@@ -1,0 +1,35 @@
+Ian Campbell <Ian.Campbell@citrix.com> writes:
+
+> On Wed, 2013-07-03 at 09:34 +0100, Paul Durrant wrote:
+>> Already did that  :-)
+>> 
+>> > There are also sub-vendor and sub-device IDs but I don't think they are
+>> > so useful for us (AFAIK they are intended to allow the board
+>> > manufacturer to "subclass" the IDs baked into the ASIC).
+>> > 
+>> 
+>> I'm always hazy about what those mean. I thought the idea was that a
+>> vendor may collect together many devices, potentially from different
+>> vendors, into a single chip/board and they should use common subsystem
+>> vendor/device info for all those devices to indicate that they were
+>> all part of that larger unit - but maybe I'm completely wrong.
+>
+> I figured it was so the board vendor could add "value" in their drivers
+> by taking advantage of the higher precedence given to the binding to the
+> sub-ids by OSs.
+
+It's essentially an OEM id.  Often times it's an EEPROM setting on real
+hardware.  A different subsystem vendor/device does not indicate a
+different programming interface.
+
+We set it to a vendor/device ID reserved for QEMU by default.  It's best
+to keep it the QEMU ID to identify it as a device implemented by QEMU.
+
+It's mighty handy as it lets software figure out that it's a Cirrus VGA
+card emulated by QEMU (not real hardware).  In fact, I believe the
+kernel KMS driver for Cirrus only binds to the QEMU vendor/device ID
+since that's the only thing reasonably testable these days.
+
+Regards,
+
+Anthony Liguori

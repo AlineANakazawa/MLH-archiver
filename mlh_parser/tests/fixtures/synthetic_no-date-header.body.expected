@@ -1,0 +1,3 @@
+Synthetic test email.
+This email has no Date header at all.
+The parser should fall back to the Received header for the date.

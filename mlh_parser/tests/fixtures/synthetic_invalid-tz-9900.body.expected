@@ -1,0 +1,3 @@
+Synthetic test email.
+The Date header has an out-of-range timezone offset (+9900 = 99 hours).
+The parser should discard it and fall back to the Received header date.

@@ -1,0 +1,127 @@
+Hi Jonas,
+
+I tested your ROCK 5B+ patches and the results are below.
+
+Hardware / build:
+  - Board: Radxa ROCK 5B+ rev 1.2 (32 GB LPDDR5)
+  - Toolchain: aarch64-linux-gnu-gcc 15.1.0
+  - TPL: rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin
+  - BL31: rk3588_bl31_v1.51.elf
+  - Boot: microSD
+  - U-Boot build: 2026.01-rc1-00252-g0afc36a2f4dc
+
+Results:
+  - Detected as “Radxa ROCK 5B+” (rk3588-rock-5b-plus.dtb)
+  - SD and USB enumeration work correctly
+  - Ethernet reports “No ethernet found” (GMAC node not yet enabled)
+
+Full boot log attached below.
+
+Tested-by: Bryan Hinton <bryan@bryanhinton.com>
+
+Thanks,
+Bryan
+
+---
+Boot log:
+
+U-Boot 2026.01-rc1-00252-g0afc36a2f4dc (Nov 04 2025 - 15:52:02 -0600)
+
+Model: Radxa ROCK 5B+
+SoC:   RK3588
+DRAM:  32 GiB (total 31.7 GiB)
+Core:  380 devices, 34 uclasses, devicetree: separate
+MMC:   mmc@fe2c0000: 1, mmc@fe2e0000: 0
+Loading Environment from nowhere... OK
+In:    serial@feb50000
+Out:   serial@feb50000
+Err:   serial@feb50000
+Model: Radxa ROCK 5B+
+SoC:   RK3588
+Net:   No ethernet found.
+Hit any key to stop autoboot: 0
+=> env print fdtfile
+fdtfile=rockchip/rk3588-rock-5b-plus.dtb
+=> fdt print / model
+No FDT memory address configured. Please configure
+the FDT address via "fdt addr <address>" command.
+Aborting!
+=> fdt print / compatible
+No FDT memory address configured. Please configure
+the FDT address via "fdt addr <address>" command.
+Aborting!
+=> usb start
+starting USB...
+USB EHCI 1.00
+USB OHCI 1.0
+USB EHCI 1.00
+USB OHCI 1.0
+Register 2000140 NbrPorts 2
+Starting the controller
+USB XHCI 1.10
+Register 2000140 NbrPorts 2
+Starting the controller
+USB XHCI 1.10
+Bus usb@fc800000: 1 USB Device(s) found
+Bus usb@fc840000: 1 USB Device(s) found
+Bus usb@fc880000: 1 USB Device(s) found
+Bus usb@fc8c0000: 1 USB Device(s) found
+Bus usb@fcd00000: 1 USB Device(s) found
+Bus usb@fc400000: 1 USB Device(s) found
+       scanning usb for storage devices... 0 Storage Device(s) found
+=> mmc list
+mmc@fe2c0000: 1
+mmc@fe2e0000: 0
+=> bdinfo
+boot_params = 0x0000000000000000
+DRAM bank   = 0x0000000000000000
+-> start    = 0x0000000000200000
+-> size     = 0x00000000efe00000
+DRAM bank   = 0x0000000000000001
+-> start    = 0x0000000100000000
+-> size     = 0x00000002fc000000
+DRAM bank   = 0x0000000000000002
+-> start    = 0x00000003fc500000
+-> size     = 0x0000000003a00000
+DRAM bank   = 0x0000000000000003
+-> start    = 0x0000000400000000
+-> size     = 0x0000000400000000
+flashstart  = 0x0000000000000000
+flashsize   = 0x0000000000000000
+flashoffset = 0x0000000000000000
+baudrate    = 1500000 bps
+relocaddr   = 0x00000000eff07000
+reloc off   = 0x00000000ef507000
+Build       = 64-bit
+current eth = unknown
+eth-1addr   = (not set)
+IP addr     = <NULL>
+fdt_blob    = 0x00000000edbe0a00
+lmb_dump_all:
+ memory.count = 0x4
+ memory[0]	[0x200000-0xefffffff], 0xefe00000 bytes, flags: none
+ memory[1]	[0x100000000-0x3fbffffff], 0x2fc000000 bytes, flags: none
+ memory[2]	[0x3fc500000-0x3ffefffff], 0x3a00000 bytes, flags: none
+ memory[3]	[0x400000000-0x7ffffffff], 0x400000000 bytes, flags: none
+ reserved.count = 0x5
+ reserved[0]	[0xecbdd000-0xecbdffff], 0x3000 bytes, flags: no-notify, no-overwrite
+ reserved[1]	[0xecbe09f0-0xefffffff], 0x341f610 bytes, flags: no-overwrite
+ reserved[2]	[0x100000000-0x3fbffffff], 0x2fc000000 bytes, flags: no-overwrite
+ reserved[3]	[0x3fc500000-0x3ffefffff], 0x3a00000 bytes, flags: no-overwrite
+ reserved[4]	[0x400000000-0x7ffffffff], 0x400000000 bytes, flags: no-overwrite
+devicetree  = separate
+serial addr = 0x00000000feb50000
+ width      = 0x0000000000000004
+ shift      = 0x0000000000000002
+ offset     = 0x0000000000000000
+ clock      = 0x00000000016e3600
+arch_number = 0x0000000000000000
+TLB addr    = 0x00000000efff0000
+irq_sp      = 0x00000000edbe09f0
+sp start    = 0x00000000edbe09f0
+Early malloc usage: 2700 / 10000
+=> fdt addr 0x00000000edbe0a00
+Working FDT set to edbe0a00
+=> fdt print / model
+model = "Radxa ROCK 5B+"
+

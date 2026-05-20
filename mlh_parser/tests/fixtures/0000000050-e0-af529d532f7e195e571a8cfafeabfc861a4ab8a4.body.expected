@@ -1,0 +1,33 @@
+Add initial kernel support for CPPC v4 (ACPI 6.6, Section 8.4.6),
+which extends the _CPC package from 23 to 25 entries with two
+optional fields:
+
+  - OSPM Nominal Performance (8.4.6.1.2.6): write-only register
+    used by OSPM to tell the platform what it considers nominal.
+    The platform classifies performance above this as boost and
+    below as throttle for power/thermal decisions.
+
+  - Resource Priority (8.4.6.1.2.7): Package of Resource Priority
+    Register Descriptor sub-packages. Full parsing is not yet
+    implemented; such entries are marked as unsupported.
+
+Patch 1: Add v4 _CPC parsing - validate the 25-entry layout,
+handle the Resource Priority package, and mark the two new
+registers optional.
+
+Patch 2: cppc_set_ospm_nominal_perf() API, write-only
+acpi_cppc/ospm_nominal_perf sysfs attribute, and init to platform
+nominal during cppc_cpufreq policy init.
+
+Sumit Gupta (2):
+  ACPI: CPPC: Add support for CPPC v4
+  ACPI: CPPC: Add ospm_nominal_perf support
+
+ drivers/acpi/cppc_acpi.c       | 66 ++++++++++++++++++++++++++++++----
+ drivers/cpufreq/cppc_cpufreq.c | 10 ++++++
+ include/acpi/cppc_acpi.h       | 13 +++++--
+ 3 files changed, 81 insertions(+), 8 deletions(-)
+
+-- 
+2.34.1
+

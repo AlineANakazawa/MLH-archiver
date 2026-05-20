@@ -1,0 +1,48 @@
+
+
+On 7/6/2020 10:49 PM, David Miller wrote:
+> From: Aya Levin <ayal@mellanox.com>
+> Date: Mon, 6 Jul 2020 16:00:59 +0300
+> 
+>> Assuming the discussions with Bjorn will conclude in a well-trusted
+>> API that ensures relaxed ordering in enabled, I'd still like a method
+>> to turn off relaxed ordering for performance debugging sake.
+>> Bjorn highlighted the fact that the PCIe sub system can only offer a
+>> query method. Even if theoretically a set API will be provided, this
+>> will not fit a netdev debugging - I wonder if CPU vendors even support
+>> relaxed ordering set/unset...
+>> On the driver's side relaxed ordering is an attribute of the mkey and
+>> should be available for configuration (similar to number of CPU
+>> vs. number of channels).
+>> Based on the above, and binding the driver's default relaxed ordering
+>> to the return value from pcie_relaxed_ordering_enabled(), may I
+>> continue with previous direction of a private-flag to control the
+>> client side (my driver) ?
+> 
+> I don't like this situation at all.
+> 
+> If RO is so dodgy that it potentially needs to be disabled, that is
+> going to be an issue not just with networking devices but also with
+> storage and other device types as well.
+> 
+> Will every device type have a custom way to disable RO, thus
+> inconsistently, in order to accomodate this?
+> 
+> That makes no sense and is a terrible user experience.
+> 
+> That's why the knob belongs generically in PCI or similar.
+> 
+Hi Bjorn,
+
+Mellanox NIC supports relaxed ordering operation over DMA buffers. 
+However for debug prepossess we must have a chicken bit to disable 
+relaxed ordering on a specific system without effecting others in 
+run-time. In order to meet this requirement, I added a netdev 
+private-flag to ethtool for set RO API.
+
+Dave raised a concern regarding embedding relaxed ordering set API per 
+system (networking, storage and others). We need the ability to manage 
+relaxed ordering in a unify manner. Could you please define a PCI 
+sub-system solution to meet this requirement?
+
+Aya.

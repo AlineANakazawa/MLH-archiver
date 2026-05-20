@@ -1,0 +1,37 @@
+On Thu, 2010-04-15 at 11:05 +0300, Avi Kivity wrote:
+> On 04/15/2030 04:04 AM, Zhang, Yanmin wrote:
+> >
+> >> An even more accurate way to determine this is to check whether the
+> >> interrupt frame points back at the 'int $2' instruction.  However we
+> >> plan to switch to a self-IPI method to inject the NMI, and I'm not sure
+> >> wether APIC NMIs are accepted on an instruction boundary or whether
+> >> there's some latency involved.
+> >>      
+> > Yes. But the frame pointer checking seems a little complicated.
+> >    
+> 
+> An even bigger disadvantage is that it won't work with Sheng's patch, 
+> self-NMIs are not synchronous.
+> 
+> >>>    	trace_kvm_entry(vcpu->vcpu_id);
+> >>> +
+> >>> +	percpu_write(current_vcpu, vcpu);
+> >>>    	kvm_x86_ops->run(vcpu);
+> >>> +	percpu_write(current_vcpu, NULL);
+> >>>
+> >>>        
+> >> If you move this around the 'int $2' instructions you will close the
+> >> race, as a stray NMI won't catch us updating the rip cache.  But that
+> >> depends on whether self-IPI is accepted on the next instruction or not.
+> >>      
+> > Right. The kernel part has dependency on the self-IPI implementation.
+> > I will move above percpu_write(current_vcpu, vcpu) (or a new wrapper function)
+> > just around 'int $2'.
+> >
+> >    
+> 
+> Or create a new function to inject the interrupt in x86.c.  That will 
+> reduce duplication between svm.c and vmx.c.
+I checked svm.c and it seems svm.c doesn't trigger a NMI to host if the NMI
+happens in guest os. In addition, svm_complete_interrupts is called after
+interrupt is enabled.

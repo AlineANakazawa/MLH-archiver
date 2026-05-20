@@ -1,0 +1,19 @@
+["""---
+ test/accel_test.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/test/accel_test.c b/test/accel_test.c
+index e7f0e8e..3e82e42 100644
+--- a/test/accel_test.c
++++ b/test/accel_test.c
+@@ -54,7 +54,7 @@ struct acctest_context *acctest_init(int tflags)
+ 	waitpkg = 0;
+ 	cpuid(&leaf, unused, &waitpkg, unused + 1);
+ 	if (waitpkg & 0x20) {
+-		dbg("umwait supported\n");
++		dbg("umwait supported:WAITPKG CPUID.(EAX=07H,ECX=0H):ECX[bit 5]\n");
+ 		umwait_support = 1;
+ 	}
+ 
+-- 
+2.43.0"""]

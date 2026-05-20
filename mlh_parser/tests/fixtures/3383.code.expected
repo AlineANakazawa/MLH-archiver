@@ -1,4 +1,49 @@
-["""diff --git a/fence/fenced/fd.h b/fence/fenced/fd.h
+["""This is an automated email from the git hooks/post-receive script. It was
+generated because a ref change was pushed to the repository containing
+the project "Cluster Project".
+
+http://sources.redhat.com/git/gitweb.cgi?p=cluster.git;a=commitdiff;h=a2699239ed1ba3537865b5dcbeb160bf3d5ecfc9
+
+The branch, master has been updated
+       via  a2699239ed1ba3537865b5dcbeb160bf3d5ecfc9 (commit)
+      from  d073771dd925558714cbaf1ab3624f9a42d0a12c (commit)
+
+Those revisions listed above that are new to this repository have
+not appeared on any other notification email; so we list those
+revisions in full, below.
+
+- Log -----------------------------------------------------------------
+commit a2699239ed1ba3537865b5dcbeb160bf3d5ecfc9
+Author: David Teigland <teigland@redhat.com>
+Date:   Thu Jul 10 13:45:50 2008 -0500
+
+    fenced/dlm_controld/gfs_controld: ccs/cman setup
+    
+    Consistently set up and clean up ccs and cman.
+    
+    Signed-off-by: David Teigland <teigland@redhat.com>
+
+-----------------------------------------------------------------------
+
+Summary of changes:
+ fence/fenced/fd.h                |    1 +
+ fence/fenced/main.c              |    5 +-
+ fence/fenced/member_cman.c       |    6 +-
+ group/dlm_controld/action.c      |   69 ++++++++++++-----------
+ group/dlm_controld/config.c      |  101 +++++++++++++++-----------------
+ group/dlm_controld/config.h      |    8 +-
+ group/dlm_controld/dlm_daemon.h  |   14 +++-
+ group/dlm_controld/group.c       |    5 ++
+ group/dlm_controld/main.c        |   67 +++++++++++----------
+ group/dlm_controld/member_cman.c |   38 +++++++++---
+ group/gfs_controld/config.c      |  117 +++++++++++++++++--------------------
+ group/gfs_controld/gfs_daemon.h  |    6 ++-
+ group/gfs_controld/group.c       |    5 ++
+ group/gfs_controld/main.c        |   41 ++++++++-----
+ group/gfs_controld/member_cman.c |   52 +++++++++++------
+ 15 files changed, 296 insertions(+), 239 deletions(-)
+
+diff --git a/fence/fenced/fd.h b/fence/fenced/fd.h
 index 7fa4b07..c1db728 100644
 --- a/fence/fenced/fd.h
 +++ b/fence/fenced/fd.h
@@ -1141,5 +1186,5 @@ index bd7aa1c..ccda450 100644
 
 
 hooks/post-receive
---"""]
-
+--
+Cluster Project"""]

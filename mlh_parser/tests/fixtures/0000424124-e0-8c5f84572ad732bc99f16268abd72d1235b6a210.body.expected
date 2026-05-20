@@ -1,0 +1,197 @@
+Hi,
+
+We are trying to compile Xorg 6.9.0 using buildroot.We have applied the
+patch 0000878 to update xorg to 6.9.0 and make it compile.But we are getting
+following error while doing so.
+
+ 
+
+making all in programs/Xserver/Xext...
+
+make[6]: Entering directory
+`/zamitwork/buildroot/build_i686/xc/programs/Xserver/Xext'
+
+ -D_POSIX_SOURCE                             -D_BSD_SOURCE -D_GNU_SOURCE
+-DX_LOCALE -DSHAPE -DXINPUT -DXKB  -DXAPPGROUP   -DXCSECURITY -DTOGCUP
+-DXF86BIGFONT -DDPMSExtension   -DXPRINT -DPIXPRIV -DPANORAMIX   -DRENDER
+-DRANDR    -DXFIXES -DDAMAGE -DCOMPOSITE -DXEVIE    -DGCCUSESGAS
+-DAVOID_GLYPHBLT -DPIXPRIV -DSINGLEDEPTH                      -DXFreeXDGA
+-DXvExtension                                -DXFree86LOADER -DDLOPEN_HACK
+-DXFree86Server                       -DXF86VIDMODE
+-DXvMCExtension                                 -DSMART_SCHEDULE
+-DBUILDDEBUG -DXResExtension                             -DX_BYTE_ORDER=
+-DXORG_VERSION_CURRENT="(((6) * 10000000) + ((9) * 100000) + ((0) * 1000) +
+0)" -DNDEBUG   -DFUNCPROTO=15 -DNARROWPROTO   -DMITMISC -DXTEST -DXTRAP
+-DXSYNC -DXCMISC -DXRECORD      -DMITSHM -DBIGREQS -DXF86VIDMODE
+-DXF86MISC -DDBE -DDPMSExtension -DEVI  -DSCREENSAVER -DXV -DXVMC
+-DRES -DHAS_XVMCSHM   bigreq.c
+
+rm -f sync.o
+
+/zamitwork/buildroot/build_i686/staging_dir/bin/i686-linux-uclibc-gcc -c -Os
+-ansi -Wall -Wpointer-arith -Wundef    -I. -I../include
+-I../../../exports/include/X11 -I../../../include/extensions
+-I../../../include/fonts -I../mi -I../render
+-I../../../programs/Xserver/hw/xfree86/common -I../../../include/fonts
+-I../hw/dmx  -I../../.. -I../../../exports/include   -Dlinux -D__i686__
+-D_POSIX_SOURCE                             -D_BSD_SOURCE -D_GNU_SOURCE
+-DX_LOCALE -DSHAPE -DXINPUT -DXKB  -DXAPPGROUP   -DXCSECURITY -DTOGCUP
+-DXF86BIGFONT -DDPMSExtension   -DXPRINT -DPIXPRIV -DPANORAMIX   -DRENDER
+-DRANDR    -DXFIXES -DDAMAGE -DCOMPOSITE -DXEVIE    -DGCCUSESGAS
+-DAVOID_GLYPHBLT -DPIXPRIV -DSINGLEDEPTH                      -DXFreeXDGA
+-DXvExtension                                -DXFree86LOADER -DDLOPEN_HACK
+-DXFree86Server                       -DXF86VIDMODE
+-DXvMCExtension                                 -DSMART_SCHEDULE
+-DBUILDDEBUG -DXResExtension                             -DX_BYTE_ORDER=
+-DXORG_VERSION_CURRENT="(((6) * 10000000) + ((9) * 100000) + ((0) * 1000) +
+0)" -DNDEBUG   -DFUNCPROTO=15 -DNARROWPROTO   -DMITMISC -DXTEST -DXTRAP
+-DXSYNC -DXCMISC -DXRECORD      -DMITSHM -DBIGREQS -DXF86VIDMODE
+-DXF86MISC -DDBE -DDPMSExtension -DEVI  -DSCREENSAVER -DXV -DXVMC
+-DRES -DHAS_XVMCSHM   sync.c
+
+rm -f saver.o
+
+/zamitwork/buildroot/build_i686/staging_dir/bin/i686-linux-uclibc-gcc -c -Os
+-ansi -Wall -Wpointer-arith -Wundef    -I. -I../include
+-I../../../exports/include/X11 -I../../../include/extensions
+-I../../../include/fonts -I../mi -I../render
+-I../../../programs/Xserver/hw/xfree86/common -I../../../include/fonts
+-I../hw/dmx  -I../../.. -I../../../exports/include   -Dlinux -D__i686__
+-D_POSIX_SOURCE                             -D_BSD_SOURCE -D_GNU_SOURCE
+-DX_LOCALE -DSHAPE -DXINPUT -DXKB  -DXAPPGROUP   -DXCSECURITY -DTOGCUP
+-DXF86BIGFONT -DDPMSExtension   -DXPRINT -DPIXPRIV -DPANORAMIX   -DRENDER
+-DRANDR    -DXFIXES -DDAMAGE -DCOMPOSITE -DXEVIE    -DGCCUSESGAS
+-DAVOID_GLYPHBLT -DPIXPRIV -DSINGLEDEPTH                      -DXFreeXDGA
+-DXvExtension                                -DXFree86LOADER -DDLOPEN_HACK
+-DXFree86Server                       -DXF86VIDMODE
+-DXvMCExtension                                 -DSMART_SCHEDULE
+-DBUILDDEBUG -DXResExtension                             -DX_BYTE_ORDER=
+-DXORG_VERSION_CURRENT="(((6) * 10000000) + ((9) * 100000) + ((0) * 1000) +
+0)" -DNDEBUG   -DFUNCPROTO=15 -DNARROWPROTO   -DMITMISC -DXTEST -DXTRAP
+-DXSYNC -DXCMISC -DXRECORD      -DMITSHM -DBIGREQS -DXF86VIDMODE
+-DXF86MISC -DDBE -DDPMSExtension -DEVI  -DSCREENSAVER -DXV -DXVMC
+-DRES -DHAS_XVMCSHM   saver.c
+
+rm -f xcmisc.o
+
+/zamitwork/buildroot/build_i686/staging_dir/bin/i686-linux-uclibc-gcc -c -Os
+-ansi -Wall -Wpointer-arith -Wundef    -I. -I../include
+-I../../../exports/include/X11 -I../../../include/extensions
+-I../../../include/fonts -I../mi -I../render
+-I../../../programs/Xserver/hw/xfree86/common -I../../../include/fonts
+-I../hw/dmx  -I../../.. -I../../../exports/include   -Dlinux -D__i686__
+-D_POSIX_SOURCE                             -D_BSD_SOURCE -D_GNU_SOURCE
+-DX_LOCALE -DSHAPE -DXINPUT -DXKB  -DXAPPGROUP   -DXCSECURITY -DTOGCUP
+-DXF86BIGFONT -DDPMSExtension   -DXPRINT -DPIXPRIV -DPANORAMIX   -DRENDER
+-DRANDR    -DXFIXES -DDAMAGE -DCOMPOSITE -DXEVIE    -DGCCUSESGAS
+-DAVOID_GLYPHBLT -DPIXPRIV -DSINGLEDEPTH                      -DXFreeXDGA
+-DXvExtension                                -DXFree86LOADER -DDLOPEN_HACK
+-DXFree86Server                       -DXF86VIDMODE
+-DXvMCExtension                                 -DSMART_SCHEDULE
+-DBUILDDEBUG -DXResExtension                             -DX_BYTE_ORDER=
+-DXORG_VERSION_CURRENT="(((6) * 10000000) + ((9) * 100000) + ((0) * 1000) +
+0)" -DNDEBUG   -DFUNCPROTO=15 -DNARROWPROTO   -DMITMISC -DXTEST -DXTRAP
+-DXSYNC -DXCMISC -DXRECORD      -DMITSHM -DBIGREQS -DXF86VIDMODE
+-DXF86MISC -DDBE -DDPMSExtension -DEVI  -DSCREENSAVER -DXV -DXVMC
+-DRES -DHAS_XVMCSHM   xcmisc.c
+
+rm -f xf86vmode.o
+
+/zamitwork/buildroot/build_i686/staging_dir/bin/i686-linux-uclibc-gcc -c -Os
+-ansi -Wall -Wpointer-arith -Wundef    -I. -I../include
+-I../../../exports/include/X11 -I../../../include/extensions
+-I../../../include/fonts -I../mi -I../render
+-I../../../programs/Xserver/hw/xfree86/common -I../../../include/fonts
+-I../hw/dmx  -I../../.. -I../../../exports/include   -Dlinux -D__i686__
+-D_POSIX_SOURCE                             -D_BSD_SOURCE -D_GNU_SOURCE
+-DX_LOCALE -DSHAPE -DXINPUT -DXKB  -DXAPPGROUP   -DXCSECURITY -DTOGCUP
+-DXF86BIGFONT -DDPMSExtension   -DXPRINT -DPIXPRIV -DPANORAMIX   -DRENDER
+-DRANDR    -DXFIXES -DDAMAGE -DCOMPOSITE -DXEVIE    -DGCCUSESGAS
+-DAVOID_GLYPHBLT -DPIXPRIV -DSINGLEDEPTH                      -DXFreeXDGA
+-DXvExtension                                -DXFree86LOADER -DDLOPEN_HACK
+-DXFree86Server                       -DXF86VIDMODE
+-DXvMCExtension                                 -DSMART_SCHEDULE
+-DBUILDDEBUG -DXResExtension                             -DX_BYTE_ORDER=
+-DXORG_VERSION_CURRENT="(((6) * 10000000) + ((9) * 100000) + ((0) * 1000) +
+0)" -DNDEBUG   -DFUNCPROTO=15 -DNARROWPROTO   -DMITMISC -DXTEST -DXTRAP
+-DXSYNC -DXCMISC -DXRECORD      -DMITSHM -DBIGREQS -DXF86VIDMODE
+-DXF86MISC -DDBE -DDPMSExtension -DEVI  -DSCREENSAVER -DXV -DXVMC
+-DRES -DHAS_XVMCSHM   xf86vmode.c
+
+In file included from
+../../../programs/Xserver/hw/xfree86/common/xf86str.h:45,
+
+                 from ../../../programs/Xserver/hw/xfree86/common/xf86.h:40,
+
+                 from xf86vmode.c:52:
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:422:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:435:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:448:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:465:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:481:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:529:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:582:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:594:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:613:18: error:
+operator '==' has no left operand
+
+../../../programs/Xserver/hw/xfree86/common/xf86Pci.h:627:18: error:
+operator '==' has no left operand
+
+make[6]: *** [xf86vmode.o] Error 1
+
+make[6]: Leaving directory
+`/zamitwork/buildroot/build_i686/xc/programs/Xserver/Xext'
+
+make[5]: *** [Xext] Error 2
+
+make[5]: Leaving directory
+`/zamitwork/buildroot/build_i686/xc/programs/Xserver'
+
+make[4]: *** [all] Error 2
+
+make[4]: Leaving directory `/zamitwork/buildroot/build_i686/xc/programs'
+
+make[3]: *** [all] Error 2
+
+make[3]: Leaving directory `/zamitwork/buildroot/build_i686/xc'
+
+make[2]: *** [World] Error 2
+
+make[2]: Leaving directory `/zamitwork/buildroot/build_i686/xc'
+
+make[1]: *** [World] Error 2
+
+make[1]: Leaving directory `/zamitwork/buildroot/build_i686/xc'
+
+make: *** [/zamitwork/buildroot/build_i686/xc/programs/Xserver/Xorg] Error 2
+
+ 
+
+Can anyone please suggest us a solution to get rid of this error for Byte
+order.
+
+Regards,
+
+Neelima
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: http://busybox.net/lists/buildroot/attachments/20060721/20267831/attachment-0001.htm

@@ -1,0 +1,89 @@
+
+i actually have 3 load-balanced webservers, and another lone one with virtual 
+IPs. there are 5 SSL certificates at this time (some clients insist on having 
+their own domain name), and it appears we are going to have more. i am trying 
+to keep this as limited as possible, but there's only so much i can do since 
+we only get 32 IPs from our co-lo facility. 
+
+since i have, logically, 2 different webservers, would this work (barring squid
+or any proxies)? $EXTERNAL_IP1 and 2 are 2 different external IPs, whereas 
+$WEBSERVER1 and 2 are the 2 different webservers.
+
+iptables -A FORWARD -p tcp -s $EXTERNAL_IP1 -d $WEBSERVER1 --dport 443 -j ACCEPT
+iptables -A FORWARD -p tcp -s $EXTERNAL_IP2 -d $WEBSERVER2 --dport 443 -j ACCEPT 
+thanks!
+
+-\jen
+
+ 
+> THe original poster has three web servers with three certs (I think). The
+> reverse proxy you are explaining below can only hold one cert (this is the
+> nature of SSL). 
+> 
+> Ramin
+> 
+> On Sat, Jul 26, 2003 at 12:03:27AM +0200, Garcia Ruiz wrote:
+> 
+> > I can tell you that squid 2.5 supports reverse proxying and it works this
+> > way: Client -> SSL -> Squid (with certificates) -> No SSL -> Internal
+> > Server. I think that HTTP proxying supports reverse proxying for more than 1
+> > server but I don't know if it's the same for SSL. In this case your only
+> > problem is that the internal network donn't have encryption (Is it fine for
+> > you¿?). If reverse proxy works for you, you can get an extra: The load of
+> > you web servers will be much lower (you won't probably get cached SSL pages
+> > but as you know, when requesting a page there are a lot of requests -images
+> > among other- and these kind of requests can be cached and also are very
+> > heavy. The load of your servers would be also lower due to the lack of
+> > encryption-decryption inside them).
+> > 
+> > Squid 3.0 supports Client -> SSL -> Squid (with certificates) -> SSL ->
+> > Internal Server but it is in developement state (I wouldn't use in
+> > production mode).
+> > 
+> > 
+> > Here you have some interesting links:
+> > http://squid.bilkent.edu.tr/mail-archive/squid-users/200102/0714.html
+> > http://www.squid-cache.org/mail-archive/squid-users/200303/1040.html
+> > http://squid.visolve.com/white_papers/reverseproxy.htm
+> > 
+> > Regards,
+> > 
+> > JBGR
+> > 
+> > ----- Original Message ----- 
+> > From: "Ramin Dousti" <ramin@cannon.eng.us.uu.net>
+> > To: "Garcia Ruiz" <gar_ruiz@teleline.es>
+> > Cc: <jen@saturn5.com>; <netfilter@lists.netfilter.org>
+> > Sent: Friday, July 25, 2003 9:33 PM
+> > Subject: Re: ssl forward / proxy question
+> > 
+> > 
+> > > You mean squid is going to handle the "get" requests for https??????
+> > > Meaning it's terminating SSL, sending the right cert, negotiating a
+> > > session key with the client, getting the request and fetching the
+> > > contents based on the "get" request from the right web server on the
+> > > LAN????
+> > >
+> > > Can you confirm all the above? If so, squid is a big security hole,
+> > > but I'm sure it's not:
+> > >
+> > > http://www.squid-cache.org/Doc/FAQ/FAQ-1.html#ss1.12
+> > >
+> > > Ramin
+> > >
+> > > On Fri, Jul 25, 2003 at 08:38:14PM +0200, Garcia Ruiz wrote:
+> > >
+> > > > Have a look at Squid proxy. The last releases admit SSL reverse
+> > proxying. If
+> > > > it would be capable of handling different servers your problem would be
+> > > > solved. You could have it inside of the firewall (but be careful with
+> > > > security issues).
+> > > >
+> > > > Regards.
+> > > >
+> > > > BGR
+> > >
+> > 
+> 
+
+

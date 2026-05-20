@@ -6,6 +6,8 @@ use chrono::{DateTime, FixedOffset};
 use mail_parser::{Message, MessageParser};
 use regex::Regex;
 
+use std::collections::HashMap;
+
 use crate::address_parser::addr_to_string;
 
 pub fn header_value_to_string(val: &mail_parser::HeaderValue<'_>) -> Option<String> {
@@ -190,4 +192,15 @@ pub fn get_body(msg: &Message<'_>) -> String {
     let body = body_parts.join("\n");
     // replace CRLF for line feed
     body.replace("\r\n", "\n")
+}
+
+pub fn extract_all_headers(msg: &Message<'_>) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    for header in msg.headers() {
+        let key = header.name().to_lowercase();
+        if let Some(val) = header_value_to_string(header.value()) {
+            headers.insert(key, val);
+        }
+    }
+    headers
 }

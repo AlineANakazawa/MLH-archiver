@@ -43,35 +43,73 @@ pub fn extract_attributions(commit_message: &str) -> Vec<Attribution> {
 
 /// Extracts patch diffs from an email body.
 ///
-/// Searches for common patch markers: `---`/`+++` headers, `diff --git` lines,
-/// and email-style `-- ` signature separators. Patterns are tried in order;
-/// the first pattern that produces matches is returned.
+/// Adapted from B4's `LoreMessage.get_body_parts()` and DIFF_RE detection.
+/// Splits the body on `---` separators (the git-format-patch commit/diff
+/// boundary). Each section that contains `diff --git` content is treated as
+/// a separate patch. Patches without a preceding `---` (commit-less diffs)
+/// are also handled.
 ///
-/// TODO: improve patch capturing
+/// Multiple patches (multiple `---` sections) in a single body are returned
+/// as separate entries. Multiple `diff --git` blocks within a single `---`
+/// section are kept together as one patch (multi-file patches).
+///
+/// Source: https://github.com/mricon/b4/blob/main/src/b4/__init__.py
+/// Licensed under GPLv2
 pub fn extract_patches(email_body: &str) -> Vec<String> {
-    let regexes: &[&str] = &[
-        r"(^---$[\s\S]*?^--\s*\n^.*$)",
-        r"(^---$[\s\S]*?^--[\s=]*$\n^.*$)",
-        r"(diff --git[\s\S]*?^--\s*\n^.*$)",
-        r"(^---$[\s\S]*?^--*[\S\s=]*$\n^.*$)",
-    ];
+    let diff_re = match regex::Regex::new(r"(?im)^diff --git ") {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
 
-    let mut patches = Vec::new();
-    for pattern in regexes {
-        let re = match regex::RegexBuilder::new(pattern).multi_line(true).build() {
-            Ok(r) => r,
-            Err(_) => continue,
+    if !diff_re.is_match(email_body) {
+        return Vec::new();
+    }
+
+    let sep_re = match regex::Regex::new(r"(?m)^---\s*$") {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    let sep_positions: Vec<usize> = sep_re.find_iter(email_body).map(|m| m.start()).collect();
+
+    let mut starts: Vec<usize> = Vec::new();
+
+    for &pos in &sep_positions {
+        starts.push(pos);
+    }
+
+    if diff_re.is_match(email_body) {
+        let body_before_first_sep = if let Some(&first_sep) = sep_positions.first() {
+            &email_body[..first_sep]
+        } else {
+            email_body
         };
-        for m in re.find_iter(email_body) {
-            let value = m.as_str().trim().to_string();
-            if !value.is_empty() {
-                patches.push(value);
-            }
-        }
-        if !patches.is_empty() {
-            return patches;
+        if sep_positions.is_empty() || diff_re.is_match(body_before_first_sep) {
+            starts.push(0);
         }
     }
 
-    Vec::new()
+    starts.sort();
+    starts.dedup();
+
+    let mut patches = Vec::new();
+    for i in 0..starts.len() {
+        let start = starts[i];
+        let end = if i + 1 < starts.len() {
+            starts[i + 1]
+        } else {
+            email_body.len()
+        };
+
+        let section = &email_body[start..end];
+
+        if diff_re.is_match(section) {
+            let patch = section.trim().to_string();
+            if !patch.is_empty() {
+                patches.push(patch);
+            }
+        }
+    }
+
+    patches
 }

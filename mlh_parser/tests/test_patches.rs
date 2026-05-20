@@ -4,6 +4,51 @@ use common::parse_patches_file;
 use mlh_parser::email_reader::{decode_mail, get_body};
 use mlh_parser::extractors::extract_patches;
 use std::fs;
+use std::path::Path;
+
+fn format_patches(patches: &[String]) -> String {
+    if patches.is_empty() {
+        return "[]".to_string();
+    }
+    let parts: Vec<String> = patches
+        .iter()
+        .map(|p| format!("\"\"\"{}\"\"\"", p))
+        .collect();
+    format!("[{}]", parts.join(", "))
+}
+
+#[test]
+#[ignore]
+fn generate_code_expected_files() {
+    let directory = format!(
+        "{}/tests/fixtures",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap()
+    );
+    let dir = Path::new(&directory);
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "eml") {
+            let mail_bytes = fs::read(&path).unwrap();
+            let mail = match decode_mail(&mail_bytes) {
+                Some(m) => m,
+                None => continue,
+            };
+            let body = get_body(&mail);
+            let patches = extract_patches(&body);
+            let formatted = format_patches(&patches);
+
+            let expected_path = path.with_extension("code.expected");
+            fs::write(&expected_path, formatted + "\n").unwrap();
+            println!(
+                "{}: {} patches",
+                expected_path.file_name().unwrap().to_string_lossy(),
+                patches.len()
+            );
+        }
+    }
+    println!("Done!");
+}
 
 const NO_PATCH_MAIL: &str = r#"
 syzbot has found a reproducer for the following crash on:
@@ -160,6 +205,15 @@ fn test_patch_emails() {
         let mail = decode_mail(&mail_bytes).unwrap();
         let body = get_body(&mail);
         let acctual_patches = extract_patches(&body);
+
+        assert_eq!(
+            acctual_patches.len(),
+            expected_patches.len(),
+            "Patch count mismatch for {:?}: got {}, expected {}",
+            email_file,
+            acctual_patches.len(),
+            expected_patches.len()
+        );
 
         for (id, patch) in acctual_patches.iter().enumerate() {
             assert_eq!(

@@ -13,13 +13,13 @@
 //! [`parse_email`]: crate::email_parser::parse_email
 //! [`flush_batch`]: crate::dataset_writer::flush_batch
 
+pub mod address_parser;
 pub mod config;
 pub mod constants;
 pub mod dataset_writer;
 pub mod date_parser;
 pub mod email_file_reader;
 pub mod email_parser;
-pub mod address_parser;
 pub mod email_reader;
 pub mod entities;
 pub mod errors;

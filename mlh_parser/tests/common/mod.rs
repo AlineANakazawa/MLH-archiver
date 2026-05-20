@@ -1,16 +1,15 @@
 #![allow(dead_code)]
 // why cant clippy not find these functions being used in other test files ?
 
+use mlh_parser::Attribution;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use mlh_parser::Attribution;
 
-static RFC2047_ENCODED: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"=\?([^?]+)\?([bqBQ])\?([^?]*)\?=").unwrap()
-});
+static RFC2047_ENCODED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"=\?([^?]+)\?([bqBQ])\?([^?]*)\?=").unwrap());
 
 pub fn rfc2047_decode(input: &str) -> String {
     RFC2047_ENCODED
@@ -21,16 +20,15 @@ pub fn rfc2047_decode(input: &str) -> String {
             match encoding.to_uppercase().as_str() {
                 "B" => {
                     use base64::Engine as _;
-                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(data) {
-                        if let Some(s) = encoding_rs::Encoding::for_label(charset.as_bytes())
-                            .and_then(|enc| {
+                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(data)
+                        && let Some(s) = encoding_rs::Encoding::for_label(charset.as_bytes())
+                            .map(|enc| {
                                 let (cow, _) = enc.decode_without_bom_handling(&decoded);
-                                Some(cow.into_owned())
+                                cow.into_owned()
                             })
                             .or_else(|| String::from_utf8(decoded).ok())
-                        {
-                            return s;
-                        }
+                    {
+                        return s;
                     }
                     caps[0].to_string()
                 }
@@ -40,7 +38,9 @@ pub fn rfc2047_decode(input: &str) -> String {
                     let mut i = 0;
                     while i < chars.len() {
                         if chars[i] == '=' && i + 2 < chars.len() {
-                            if let Ok(b) = u8::from_str_radix(&format!("{}{}", chars[i + 1], chars[i + 2]), 16) {
+                            if let Ok(b) =
+                                u8::from_str_radix(&format!("{}{}", chars[i + 1], chars[i + 2]), 16)
+                            {
                                 bytes.push(b);
                                 i += 3;
                                 continue;
@@ -54,9 +54,9 @@ pub fn rfc2047_decode(input: &str) -> String {
                         i += 1;
                     }
                     if let Some(s) = encoding_rs::Encoding::for_label(charset.as_bytes())
-                        .and_then(|enc| {
+                        .map(|enc| {
                             let (cow, _) = enc.decode_without_bom_handling(&bytes);
-                            Some(cow.into_owned())
+                            cow.into_owned()
                         })
                         .or_else(|| String::from_utf8(bytes).ok())
                     {

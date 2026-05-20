@@ -1,7 +1,7 @@
 mod common;
 
-use common::{parse_body_file, parse_headers_file, rfc2047_decode};
 use chrono::DateTime;
+use common::{parse_body_file, parse_headers_file, rfc2047_decode};
 use mlh_parser::email_parser::parse_email;
 use mlh_parser::email_reader::{decode_mail, get_body};
 use std::fs;
@@ -99,12 +99,10 @@ fn test_header_parser() {
         for (key, expected_value) in &expected_headers {
             match key.as_str() {
                 "from" => {
-                    let actual_norm = normalize_address_for_comparison(
-                        &rfc2047_decode(&parsed.from),
-                    );
-                    let expected_norm = normalize_address_for_comparison(
-                        &rfc2047_decode(expected_value),
-                    );
+                    let actual_norm =
+                        normalize_address_for_comparison(&rfc2047_decode(&parsed.from));
+                    let expected_norm =
+                        normalize_address_for_comparison(&rfc2047_decode(expected_value));
                     assert_eq!(
                         actual_norm, expected_norm,
                         "From mismatch in {:?}",
@@ -121,11 +119,7 @@ fn test_header_parser() {
                         .split(',')
                         .map(|s| normalize_address_for_comparison(&rfc2047_decode(s.trim())))
                         .collect();
-                    assert_eq!(
-                        actual, expected,
-                        "To mismatch in {:?}",
-                        email_file
-                    );
+                    assert_eq!(actual, expected, "To mismatch in {:?}", email_file);
                 }
                 "cc" => {
                     let actual: Vec<String> = parsed
@@ -137,11 +131,7 @@ fn test_header_parser() {
                         .split(',')
                         .map(|s| normalize_address_for_comparison(&rfc2047_decode(s.trim())))
                         .collect();
-                    assert_eq!(
-                        actual, expected,
-                        "Cc mismatch in {:?}",
-                        email_file
-                    );
+                    assert_eq!(actual, expected, "Cc mismatch in {:?}", email_file);
                 }
                 "subject" => {
                     assert_eq!(
@@ -168,21 +158,20 @@ fn test_header_parser() {
                     );
                 }
                 "references" => {
-                    let mut actual: Vec<String> =
-                        parsed.references.iter().map(|r| strip_brackets(r)).collect();
+                    let mut actual: Vec<String> = parsed
+                        .references
+                        .iter()
+                        .map(|r| strip_brackets(r))
+                        .collect();
                     actual.sort();
                     let expected = normalize_refs(expected_value);
-                    assert_eq!(
-                        actual, expected,
-                        "References mismatch in {:?}",
-                        email_file
-                    );
+                    assert_eq!(actual, expected, "References mismatch in {:?}", email_file);
                 }
                 "date" => {
                     let expected_date_parsed = parse_date_for_comparison(expected_value);
                     if let Some(ref actual_date) = parsed.date {
                         let actual_fixed: chrono::DateTime<chrono::FixedOffset> =
-                            actual_date.clone().into();
+                            (*actual_date).into();
                         if let Some(ref expected_dt) = expected_date_parsed {
                             let diff_secs = (actual_fixed - *expected_dt).num_seconds().abs();
                             if diff_secs > 86400 {
@@ -199,4 +188,3 @@ fn test_header_parser() {
         }
     }
 }
-

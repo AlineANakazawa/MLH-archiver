@@ -3,8 +3,8 @@
 
 use regex::Regex;
 
-use crate::address_parser::normalize_address;
 use crate::Attribution;
+use crate::address_parser::normalize_address;
 
 /// Extracts git-style trailer lines from a commit message / email body.
 ///

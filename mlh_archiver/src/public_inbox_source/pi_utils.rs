@@ -343,7 +343,7 @@ pub fn detect_inbox(dir: &Path) -> crate::Result<Option<PublicInbox>> {
             .map(|entries| {
                 entries.filter_map(|e| e.ok()).any(|e| {
                     e.path().is_dir()
-                        && e.file_name().to_str().map_or(false, |n| n.ends_with(".git"))
+                        && e.file_name().to_str().is_some_and(|n| n.ends_with(".git"))
                         && e.path().join("objects").is_dir()
                 })
             })

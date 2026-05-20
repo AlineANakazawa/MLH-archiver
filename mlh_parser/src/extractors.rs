@@ -3,6 +3,7 @@
 
 use regex::Regex;
 
+use crate::address_parser::normalize_address;
 use crate::Attribution;
 
 /// Extracts git-style trailer lines from a commit message / email body.
@@ -32,9 +33,10 @@ pub fn extract_attributions(commit_message: &str) -> Vec<Attribution> {
         let attr_type = caps.name("type").map_or("", |m| m.as_str()).trim();
         let name = caps.name("name").map_or("", |m| m.as_str()).trim();
         let email = caps.name("email").map_or("", |m| m.as_str()).trim();
+        let identification = normalize_address(&format!("{} <{}>", name, email));
         attributions.push(Attribution {
             attribution: attr_type.to_string(),
-            identification: format!("{} <{}>", name, email),
+            identification,
         });
     }
 

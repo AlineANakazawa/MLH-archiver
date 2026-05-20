@@ -1,3 +1,5 @@
+From: Suraj Sonawane <surajsonawane0215@gmail.com>
+
 Add Device Tree bindings for Sharp GP2Y1010AU0F optical dust sensor.
 The sensor measures particulate matter concentration via infrared
 scattering and requires:

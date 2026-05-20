@@ -1,3 +1,5 @@
+From: Suraj Sonawane <surajsonawane0215@gmail.com>
+
 Implement support for the Sharp GP2Y1010AU0F optical dust sensor which
 measures particulate matter concentration using infrared scattering.
 The sensor requires precise 320μs LED pulses with ADC sampling at 280μs

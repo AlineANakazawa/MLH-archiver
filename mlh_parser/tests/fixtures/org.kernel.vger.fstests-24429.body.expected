@@ -1,3 +1,5 @@
+From: Darrick J. Wong <djwong@kernel.org>
+
 If xfs_metadump supports the -r switch to capture the contents of
 realtime devices and there is a realtime device, add the option to the
 command line to enable preservation.

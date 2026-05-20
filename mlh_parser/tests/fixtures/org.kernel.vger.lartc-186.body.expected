@@ -12,26 +12,4 @@ i'm running Linux Mandrake 7.2 with default kernel 2.2.17
 Rick Goh.
 
 
-&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0 Transitional//EN&quot;&gt;
-&lt;HTML&gt;&lt;HEAD&gt;
-&lt;META http-equiv=Content-Type content=&quot;text/html; charset=iso-8859-1&quot;&gt;
-&lt;META content=&quot;MSHTML 5.50.4522.1800&quot; name=GENERATOR&gt;
-&lt;STYLE&gt;&lt;/STYLE&gt;
-&lt;/HEAD&gt;
-&lt;BODY bgColor=#ffffff background=&quot;&quot;&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;After i key in this,&lt;BR&gt;#tc qdisc add dev eth0 root 
-handle 10: cbq bandwidth 10Mbit avpkt 1000&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;&lt;/FONT&gt;&amp;nbsp;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;linux kernel &lt;/FONT&gt;&lt;FONT face=Arial size=2&gt;gives 
-me this reply:&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;&quot; RTNETLINK answers: Invalid argument.&quot; 
-&lt;BR&gt;&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;PLease help. i can't even get past the first 
-stage!!&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;&lt;/FONT&gt;&amp;nbsp;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;i'm running Linux Mandrake 7.2 with default kernel 
-2.2.17&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;&lt;/FONT&gt;&amp;nbsp;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;&lt;/FONT&gt;&amp;nbsp;&lt;/DIV&gt;
-&lt;DIV&gt;&lt;FONT face=Arial size=2&gt;Rick Goh.&lt;/FONT&gt;&lt;/DIV&gt;
-&lt;DIV&gt;&amp;nbsp;&lt;/DIV&gt;&lt;/BODY&gt;&lt;/HTML&gt;
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"> <HTML><HEAD> <META http-equiv=Content-Type content="text/html; charset=iso-8859-1"> <META content="MSHTML 5.50.4522.1800" name=GENERATOR> <STYLE></STYLE> </HEAD> <BODY bgColor=#ffffff background=""> <DIV><FONT face=Arial size=2>After i key in this,<BR>#tc qdisc add dev eth0 root handle 10: cbq bandwidth 10Mbit avpkt 1000</FONT></DIV> <DIV><FONT face=Arial size=2></FONT>&nbsp;</DIV> <DIV><FONT face=Arial size=2>linux kernel </FONT><FONT face=Arial size=2>gives me this reply:</FONT></DIV> <DIV><FONT face=Arial size=2>" RTNETLINK answers: Invalid argument." <BR></FONT></DIV> <DIV><FONT face=Arial size=2>PLease help. i can't even get past the first stage!!</FONT></DIV> <DIV><FONT face=Arial size=2></FONT>&nbsp;</DIV> <DIV><FONT face=Arial size=2>i'm running Linux Mandrake 7.2 with default kernel 2.2.17</FONT></DIV> <DIV><FONT face=Arial size=2></FONT>&nbsp;</DIV> <DIV><FONT face=Arial size=2></FONT>&nbsp;</DIV> <DIV><FONT face=Arial size=2>Rick Goh.</FONT></DIV> <DIV>&nbsp;</DIV></BODY></HTML>

@@ -1,3 +1,5 @@
+From: Mickaël Salaün <mic@linux.microsoft.com>
+
 Add a basic sandbox tool to launch a command which can only access a
 list of file hierarchies in a read-only or read-write way.
 

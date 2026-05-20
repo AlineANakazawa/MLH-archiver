@@ -8,7 +8,7 @@ subject: iio: add Bosch BMG160 gyroscope sensor driver
 references: <1379914517-2491-1-git-send-email-jianlong.gao@cn.bosch.com> <1379960878.3575.43.camel@joe-AO722>
 in-reply-to: <1379960878.3575.43.camel@joe-AO722>
 content-type: text/plain; charset=ISO-8859-1; format=flowed
-to: unlisted-recipients:; (no To-header on input)
+to: no To-header on input
 sender: linux-iio-owner@vger.kernel.org
 list-id: linux-iio@vger.kernel.org
 xref: nntp.lore.kernel.org org.kernel.vger.linux-iio:12570 org.kernel.vger.linux-kernel:1764324

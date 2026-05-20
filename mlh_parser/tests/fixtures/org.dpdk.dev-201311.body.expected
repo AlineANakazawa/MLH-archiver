@@ -1,3 +1,5 @@
+From: Lijun Ou <oulijun@huawei.com>
+
 This patch adds multi-process support for testpmd.
 The test cmd example as follows:
 the primary cmd:

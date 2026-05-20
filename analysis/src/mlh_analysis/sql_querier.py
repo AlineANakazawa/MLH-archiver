@@ -1,3 +1,5 @@
+import os
+
 from datafusion import SessionContext
 
 try:
@@ -7,18 +9,25 @@ except:  # noqa: E722
     pass
 
 
+def _detect_partition_cols(data_path):
+    entries = os.listdir(data_path)
+    for e in entries:
+        if "=" in e and os.path.isdir(os.path.join(data_path, e)):
+            col, _ = e.split("=", 1)
+            return [(col, "string")]
+    return None
+
+
 def main(input_map, output_dir):
     ctx = SessionContext()
 
     for name, data_path in input_map.items():
         if not data_path:
             continue
-        # TODO: detect if there are "hive-style" partitions
-        # instead of this hard coded condition
-        # data_path/partition=value/...parquet
-        if "lineage" not in name:
+        partition_cols = _detect_partition_cols(data_path)
+        if partition_cols:
             ctx.register_parquet(
-                name, data_path, table_partition_cols=[("list", "string")]
+                name, data_path, table_partition_cols=partition_cols
             )
         else:
             ctx.register_parquet(name, data_path)

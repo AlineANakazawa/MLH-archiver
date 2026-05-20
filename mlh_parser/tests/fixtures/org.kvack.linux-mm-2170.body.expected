@@ -1,0 +1,15 @@
+On Wed, 15 Dec 1999, Kanoj Sarcar wrote:
+
+> Hi,
+> 
+> Could people try out this patch against 2.3.33 and send comments/feedback.
+
+Works fine on my x86/UP/SCSI box.  Subjectively, it feels smoother.
+(that could well be imagination at work)
+
+	-Mike
+
+--
+To unsubscribe, send a message with 'unsubscribe linux-mm' in
+the body to majordomo@kvack.org.  For more info on Linux MM,
+see: http://humbolt.geo.uu.nl/Linux-MM/

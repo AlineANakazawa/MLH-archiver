@@ -6,6 +6,8 @@ use chrono::{DateTime, FixedOffset};
 use mail_parser::{Message, MessageParser};
 use regex::Regex;
 
+use std::collections::HashMap;
+
 use crate::address_parser::addr_to_string;
 
 pub fn header_value_to_string(val: &mail_parser::HeaderValue<'_>) -> Option<String> {
@@ -106,9 +108,7 @@ pub fn header_value_to_string_list(val: &mail_parser::HeaderValue<'_>) -> Option
 pub fn header_value_date(val: &mail_parser::HeaderValue<'_>) -> Option<DateTime<FixedOffset>> {
     let date_result = match val {
         mail_parser::HeaderValue::DateTime(d) => Some(d.to_rfc3339()),
-        mail_parser::HeaderValue::Received(r) => {
-            r.date.as_ref().map(|dt| dt.to_rfc3339())
-        }
+        mail_parser::HeaderValue::Received(r) => r.date.as_ref().map(|dt| dt.to_rfc3339()),
         _ => {
             log::error!("header_value_date used to decode a non Date/Received header");
             None
@@ -190,4 +190,15 @@ pub fn get_body(msg: &Message<'_>) -> String {
     let body = body_parts.join("\n");
     // replace CRLF for line feed
     body.replace("\r\n", "\n")
+}
+
+pub fn extract_all_headers(msg: &Message<'_>) -> HashMap<String, String> {
+    let mut headers = HashMap::new();
+    for header in msg.headers() {
+        let key = header.name().to_lowercase();
+        if let Some(val) = header_value_to_string(header.value()) {
+            headers.insert(key, val);
+        }
+    }
+    headers
 }

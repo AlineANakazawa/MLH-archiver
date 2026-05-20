@@ -2130,6 +2130,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "base64",
  "built",
  "chrono",
  "chrono-tz",
@@ -2137,6 +2138,7 @@ dependencies = [
  "config",
  "ctrlc",
  "dateparser",
+ "encoding_rs",
  "env_logger",
  "glob",
  "log",

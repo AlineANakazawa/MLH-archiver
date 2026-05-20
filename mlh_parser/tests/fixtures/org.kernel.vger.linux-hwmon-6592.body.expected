@@ -1,0 +1,100 @@
+From: "Eedy Karn" <Eedy Karn@advantech.com.tw>
+
+According to kernel hwmon sysfs-interface documentation, temperature
+critical max value, typically greater than corresponding temp_max values.
+Thus, reads the LTD_HV_HL (LTD HIGH VALUE HIGH LIMITATION) and LTD_LV_HL
+(LTD LOW VALUE HIGH LIMITATION) for case hwmon_temp_crit and
+hwmon_temp_crit_hyst. Reads the LTD_HV_LL (HIGH VALUE LOW LIMITATION)
+and LTD_LV_LL (LOW VALUE LOW LIMITATION) for case hwmon_temp_max
+and hwmon_temp_max_hyst.
+
+Signed-off-by: Eedy Karn <eedy.karn@coruscant.isb>
+---
+
+Changes in v6:
+- Fix incorrect temperature limitation register setting of LTD.
+Changes in v5:
+- Squashed subsequent fixes of three patches into one patch.
+Changes in v4:
+- Fix the incorrect return value of case hwmon_fan_min in function "nct7904_write_fan".
+- Fix the confused calculation of case hwmon_fan_min in function
+Changes in v3:
+- Squashed subsequent fixes of patches into one patch.
+
+-- Fix bad fallthrough in various switch statements.
+-- Fix the wrong declared of tmp as u8 in nct7904_write_in, declared tmp to int.
+-- Fix incorrect register setting of voltage.
+-- Fix incorrect register bit mapping of temperature alarm.
+-- Fix wrong return code 0x1fff in function nct7904_write_fan.
+-- Delete wrong comment in function nct7904_write_in.
+-- Fix wrong attribute names for temperature.
+-- Fix wrong registers setting for temperature.
+
+Changes in v2:
+- Fix bad fallthrough in various switch statements.
+- Fix the wrong declared of tmp as u8 in nct7904_write_in, declared tmp to int.
+---
+ drivers/hwmon/nct7904.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/hwmon/nct7904.c b/drivers/hwmon/nct7904.c
+index 76372f20d71a..ce688ab4fce2 100644
+--- a/drivers/hwmon/nct7904.c
++++ b/drivers/hwmon/nct7904.c
+@@ -398,22 +398,22 @@ static int nct7904_read_temp(struct device *dev, u32 attr, int channel,
+ 		}
+ 		return 0;
+ 	case hwmon_temp_max:
+-		reg1 = LTD_HV_HL_REG;
++		reg1 = LTD_HV_LL_REG;
+ 		reg2 = TEMP_CH1_W_REG;
+ 		reg3 = DTS_T_CPU1_W_REG;
+ 		break;
+ 	case hwmon_temp_max_hyst:
+-		reg1 = LTD_LV_HL_REG;
++		reg1 = LTD_LV_LL_REG;
+ 		reg2 = TEMP_CH1_WH_REG;
+ 		reg3 = DTS_T_CPU1_WH_REG;
+ 		break;
+ 	case hwmon_temp_crit:
+-		reg1 = LTD_HV_LL_REG;
++		reg1 = LTD_HV_HL_REG;
+ 		reg2 = TEMP_CH1_C_REG;
+ 		reg3 = DTS_T_CPU1_C_REG;
+ 		break;
+ 	case hwmon_temp_crit_hyst:
+-		reg1 = LTD_LV_LL_REG;
++		reg1 = LTD_LV_HL_REG;
+ 		reg2 = TEMP_CH1_CH_REG;
+ 		reg3 = DTS_T_CPU1_CH_REG;
+ 		break;
+@@ -507,22 +507,22 @@ static int nct7904_write_temp(struct device *dev, u32 attr, int channel,
+ 
+ 	switch (attr) {
+ 	case hwmon_temp_max:
+-		reg1 = LTD_HV_HL_REG;
++		reg1 = LTD_HV_LL_REG;
+ 		reg2 = TEMP_CH1_W_REG;
+ 		reg3 = DTS_T_CPU1_W_REG;
+ 		break;
+ 	case hwmon_temp_max_hyst:
+-		reg1 = LTD_LV_HL_REG;
++		reg1 = LTD_LV_LL_REG;
+ 		reg2 = TEMP_CH1_WH_REG;
+ 		reg3 = DTS_T_CPU1_WH_REG;
+ 		break;
+ 	case hwmon_temp_crit:
+-		reg1 = LTD_HV_LL_REG;
++		reg1 = LTD_HV_HL_REG;
+ 		reg2 = TEMP_CH1_C_REG;
+ 		reg3 = DTS_T_CPU1_C_REG;
+ 		break;
+ 	case hwmon_temp_crit_hyst:
+-		reg1 = LTD_LV_LL_REG;
++		reg1 = LTD_LV_HL_REG;
+ 		reg2 = TEMP_CH1_CH_REG;
+ 		reg3 = DTS_T_CPU1_CH_REG;
+ 		break;
+-- 
+2.17.1
+

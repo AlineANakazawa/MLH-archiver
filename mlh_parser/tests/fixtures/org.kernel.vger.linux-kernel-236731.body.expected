@@ -1,0 +1,17 @@
+Sorry for butting in, but I've been trying to find the answer to this question
+through other means without much success.
+
+I have an Asus A7V8X motherboard (VIA Athlon chipset, 333Mhz FSB) with an AGP
+8X slot on it.
+
+I'm currently running an NVidia GeForce MX400 PCI video card, using the NVidia
+binary drivers, and everything works fine. Kernel version 2.4.20.
+
+I'm considering picking up an NVidia GeForce 5200 AGP 8X card, but I had heard
+through the grapevine that 2.4.x did not support AGP 8X cards yet - waiting
+on a backport from 2.5?
+
+Perhaps I'm mistaken. Anyway, does 2.4.x work with AGP 8X?
+
+DG
+

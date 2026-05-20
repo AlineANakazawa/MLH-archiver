@@ -1,0 +1,30 @@
+Paul Menage wrote:
+> On 6/22/07, Loyken Imperial <loyken@imperial.prison> wrote:
+>>
+>> The problem with input in bytes is that the user will have to ensure
+>> that the input is
+>> a  multiple of page size, which implies that she would need to use the
+>> calculator every time.
+>>
+> 
+> Having input in bytes seems pretty natural to me. Why not just have
+> the RSS controller round the input to the nearest page (or whatever
+> granularity of memory the controller is able to limit at)?
+> 
+> Paul
+
+Hi, Paul,
+
+I am not a CLUI expert, but rounding off bytes will something that
+the administrators will probably complain about. Since we manage
+the controller memory in pages, it might be the easiest unit to use.
+The output is totally different matter.
+
+Having said that, I am not opposed to your suggestion, I'll see if
+I can find good CLUI guidelines.
+
+-- 
+	Warm Regards,
+	Balbir Singh
+	Linux Technology Center
+	IBM, ISTL

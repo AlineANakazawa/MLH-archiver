@@ -1,10 +1,74 @@
 #![allow(dead_code)]
 // why cant clippy not find these functions being used in other test files ?
 
+use mlh_parser::Attribution;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use mlh_parser::Attribution;
+use std::sync::LazyLock;
+
+static RFC2047_ENCODED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"=\?([^?]+)\?([bqBQ])\?([^?]*)\?=").unwrap());
+
+pub fn rfc2047_decode(input: &str) -> String {
+    RFC2047_ENCODED
+        .replace_all(input, |caps: &regex::Captures| {
+            let charset = &caps[1];
+            let encoding = &caps[2];
+            let data = &caps[3];
+            match encoding.to_uppercase().as_str() {
+                "B" => {
+                    use base64::Engine as _;
+                    if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(data)
+                        && let Some(s) = encoding_rs::Encoding::for_label(charset.as_bytes())
+                            .map(|enc| {
+                                let (cow, _) = enc.decode_without_bom_handling(&decoded);
+                                cow.into_owned()
+                            })
+                            .or_else(|| String::from_utf8(decoded).ok())
+                    {
+                        return s;
+                    }
+                    caps[0].to_string()
+                }
+                "Q" => {
+                    let mut bytes = Vec::new();
+                    let chars: Vec<char> = data.chars().collect();
+                    let mut i = 0;
+                    while i < chars.len() {
+                        if chars[i] == '=' && i + 2 < chars.len() {
+                            if let Ok(b) =
+                                u8::from_str_radix(&format!("{}{}", chars[i + 1], chars[i + 2]), 16)
+                            {
+                                bytes.push(b);
+                                i += 3;
+                                continue;
+                            }
+                        } else if chars[i] == '_' {
+                            bytes.push(b' ');
+                            i += 1;
+                            continue;
+                        }
+                        bytes.push(chars[i] as u8);
+                        i += 1;
+                    }
+                    if let Some(s) = encoding_rs::Encoding::for_label(charset.as_bytes())
+                        .map(|enc| {
+                            let (cow, _) = enc.decode_without_bom_handling(&bytes);
+                            cow.into_owned()
+                        })
+                        .or_else(|| String::from_utf8(bytes).ok())
+                    {
+                        return s;
+                    }
+                    caps[0].to_string()
+                }
+                _ => caps[0].to_string(),
+            }
+        })
+        .into_owned()
+}
 
 pub fn list_files_with_extension(directory: &str, extension: &str) -> Vec<PathBuf> {
     let ext = if extension.starts_with('.') {
@@ -135,6 +199,10 @@ pub fn parse_headers_file(headers_file: &Path) -> HashMap<String, String> {
             current_header = None;
             current_value = String::new();
         }
+    }
+
+    if let Some(ref key) = current_header {
+        headers.insert(key.clone(), current_value.clone());
     }
 
     headers

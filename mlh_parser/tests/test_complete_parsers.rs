@@ -44,7 +44,11 @@ fn test_complete_parser() {
                     email_file
                 );
                 assert!(!r.to.is_empty(), "TO missing for email {:?}", email_file);
-                assert!(!r.subject.is_empty(), "Subject missing for email {:?}", email_file);
+                assert!(
+                    !r.subject.is_empty(),
+                    "Subject missing for email {:?}",
+                    email_file
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse {:?}: {}", email_file, e);

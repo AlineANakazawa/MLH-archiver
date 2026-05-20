@@ -1,0 +1,6 @@
+This email has a date in the far future.
+Parser should detect it as invalid and use Received header date.
+
+--
+Timm Karlo
+ISB Data Processing

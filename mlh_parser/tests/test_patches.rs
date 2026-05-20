@@ -161,6 +161,15 @@ fn test_patch_emails() {
         let body = get_body(&mail);
         let acctual_patches = extract_patches(&body);
 
+        assert_eq!(
+            acctual_patches.len(),
+            expected_patches.len(),
+            "Patch count mismatch for {:?}: got {}, expected {}",
+            email_file,
+            acctual_patches.len(),
+            expected_patches.len()
+        );
+
         for (id, patch) in acctual_patches.iter().enumerate() {
             assert_eq!(
                 *patch, *expected_patches[id],

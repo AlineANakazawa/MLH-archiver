@@ -1,0 +1,6 @@
+This email has an invalid Date header.
+Parser should fall back to Received header date.
+
+--
+B2EMO
+Ferrix Resistance Communications

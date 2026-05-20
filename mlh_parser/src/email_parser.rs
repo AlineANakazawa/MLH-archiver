@@ -90,6 +90,7 @@ fn collect_header_data(msg: &Message<'_>, email: &mut ParsedEmail, now: DateTime
             )
             .trim()
             .to_owned();
+
             if let Some(val_date) = header_value_date(header.value()) {
                 date_options.push(val_date);
             } else {
@@ -112,12 +113,8 @@ fn collect_header_data(msg: &Message<'_>, email: &mut ParsedEmail, now: DateTime
                 )
                 .trim()
                 .to_owned();
-                if let Some(val_date) = header_value_date(header.value()) {
-                    date_options.push(val_date);
-                } else {
-                    if let Some(dt) = date_parser::parse_date_string(&raw_date) {
-                        date_options.push(dt);
-                    }
+                if let Some(dt) = date_parser::parse_date_string(&raw_date) {
+                    date_options.push(dt);
                 }
             }
         } else if key == "in-reply-to" {

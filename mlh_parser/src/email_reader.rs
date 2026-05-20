@@ -109,10 +109,7 @@ pub fn header_value_date(val: &mail_parser::HeaderValue<'_>) -> Option<DateTime<
     let date_result = match val {
         mail_parser::HeaderValue::DateTime(d) => Some(d.to_rfc3339()),
         mail_parser::HeaderValue::Received(r) => r.date.as_ref().map(|dt| dt.to_rfc3339()),
-        _ => {
-            log::error!("header_value_date used to decode a non Date/Received header");
-            None
-        }
+        _ => None,
     };
     match date_result {
         Some(d) => chrono::DateTime::parse_from_rfc3339(&d).ok(),

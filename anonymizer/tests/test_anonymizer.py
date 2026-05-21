@@ -20,6 +20,16 @@ string_test_cases = [
         "From: Mon Mothma mon.mothma@coruscant.senate",
         "From: Mon Mothma <6ff30822aa7eae3ea817fa890fe02af8daba27e0>",
     ),
+    # email with "dash"
+    (
+        "amd-gfx@lists.freedesktop.org",
+        "9a57905485c324f775450013a37baae982a06fa7",
+    ),
+    # email missing tld"
+    (
+        "amd-gfx@freedesktop",
+        "9a99ca8e28a341ffac83afcb7d393175dc806608",
+    ),
     # list of emails
     (
         "To: mon.mothma@coruscant.senate, amd-gfx@lists.freedesktop.org, miles.obrien@starfleet.local",

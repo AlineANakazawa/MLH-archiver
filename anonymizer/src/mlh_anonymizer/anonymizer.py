@@ -8,7 +8,7 @@ from mlh_anonymizer.hasher import generate_sha1_hash
 
 logger = logging.getLogger(__name__)
 
-EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+(?:\.[a-zA-Z]{2,})?")
 BRACKET_IDENTITY_RE = re.compile(r"([^<]*?)\s*<([^>]+@[^>]+)>")
 
 
@@ -62,7 +62,7 @@ def anonymize_line(line: str, is_multiline: bool = False) -> str:
 
         text_before = line[last_end:start]
 
-        if not text_before.strip():
+        if is_multiline and not text_before.strip():
             result.append(text_before)
             result.append(email)
             last_end = end

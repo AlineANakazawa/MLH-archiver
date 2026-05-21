@@ -5,7 +5,9 @@ Pseudo-anonymize personal identification data in mailing list datasets.
 
 import os
 import logging
-from multiprocessing import Pool
+import signal
+import time
+from multiprocessing import get_context
 import subprocess
 
 from mlh_anonymizer.configs import (
@@ -37,7 +39,7 @@ def parse_mail_at_wrap(mailing_list: str) -> None:
 
 
 def main() -> None:
-    logging.info("anonymizer starting — build: %s", _get_build_info())
+    logging.info("anonymizer starting — build: %s", get_build_info())
     """Main entry point for the anonymizer."""
     # Parse specific lists or all in the directory
     lists = LISTS_TO_PARSE if len(LISTS_TO_PARSE) > 0 else os.listdir(INPUT_DIR_PATH)
@@ -45,25 +47,72 @@ def main() -> None:
     if N_PROC == 1:
         sequential(lists)
     else:
-        with Pool(N_PROC) as p:
+        run_parallel(lists)
+
+
+def kill_pool_workers(pool) -> None:
+    for p in pool._pool:
+        if p.is_alive():
             try:
-                p.map(parse_mail_at_wrap, lists)
-            except KeyboardInterrupt:
-                logging.info("Interrupted, shutting down workers...")
-                p.terminate()
-                p.join()
+                os.kill(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
-def _get_build_info() -> str:
-    """Get build commit info: either from container build-time env, or from local git."""
+def join_pool_with_escalation(pool, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    workers = list(pool._pool)
+    for p in workers:
+        remaining = max(0, deadline - time.monotonic())
+        p.join(timeout=remaining)
+    alive = [p for p in workers if p.is_alive()]
+    if not alive:
+        return
+    logging.info("%d workers still alive after %.1fs, sending SIGKILL...",
+                 len(alive), timeout)
+    kill_pool_workers(pool)
+
+
+def run_parallel(lists: list[str]) -> None:
+    pool = get_context("spawn").Pool(N_PROC)
+    interrupted = False
+
+    def handle_signal(signum: int, frame: object) -> None:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            logging.info("Received signal %s — terminating workers.", signum)
+            pool.terminate()
+        else:
+            logging.info("Second signal %s — force-killing workers.", signum)
+            kill_pool_workers(pool)
+            os._exit(1)
+
+    original_sigint = signal.signal(signal.SIGINT, handle_signal)
+    original_sigterm = signal.signal(signal.SIGTERM, handle_signal)
+
+    try:
+        for _ in pool.imap_unordered(parse_mail_at_wrap, lists):
+            pass
+    except KeyboardInterrupt:
+        logging.info("Interrupted, terminating workers...")
+        pool.terminate()
+    finally:
+        pool.close()
+        join_pool_with_escalation(pool)
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
+        logging.info("All workers shut down.")
+
+
+def get_build_info() -> str:
+    """Get build commit info from container env, or fall back to local git."""
     commit = os.getenv("BUILD_GIT_COMMIT")
     date = os.getenv("BUILD_GIT_DATE")
 
-    # Prefer build-time info if set (inside container)
     if commit and commit != "unknown":
         return f"commit {commit} ({date})"
 
-    # Fall back to local git (outside container)
     try:
         commit = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],

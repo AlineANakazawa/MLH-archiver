@@ -51,6 +51,17 @@ pub fn normalize_address(value: &str) -> String {
     if let Some(reconstructed) = reconstruct_stripped_at(value) {
         return reconstructed;
     }
+    // Handle "Name email" or "Name <email>" format — ensure angle brackets
+    if let Some(caps) = ADDRESS_PATTERN.captures(value) {
+        let name = caps.get(1).map_or("", |m| m.as_str()).trim();
+        let email = caps.get(2).map_or("", |m| m.as_str()).trim();
+        if !email.is_empty() {
+            if name.is_empty() {
+                return email.to_string();
+            }
+            return format!("{} <{}>", name, email);
+        }
+    }
     value.to_string()
 }
 

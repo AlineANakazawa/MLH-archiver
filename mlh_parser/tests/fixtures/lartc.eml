@@ -1,0 +1,74 @@
+From borgqeen@z Thu Jan  1 00:00:00 1970
+From: Seven of Nine seven@borg.collective
+Date: Thu, 01 Feb 2001 19:08:25 +0000
+Subject: [LARTC] subinterfaces
+Message-Id: <marc-lartc-98373940416937@msgid-missing>
+List-Id: <lartc.vger.kernel.org>
+References: <marc-lartc-98373940416895@msgid-missing>
+In-Reply-To: <marc-lartc-98373940416895@msgid-missing>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+To: lartc@vger.kernel.org
+
+<PRE>Both subinterfaces and secondairy interfaces are configurable on a Cisco router. A
+secondary interface is usualy used we you use up all you ip addresses in an
+assigned subnet and you ned more addresses. On the other had subinterfaces are used
+to create logical interfaces, are usualy used to get around the split horizin
+problem and frame relay or atm networks. Basicaly secondairy address meens one
+interface with multible addresses, and subinterfaces meen multiple ilogical
+interfaces.
+
+Guy Van Den Bergh wrote:
+
+&gt;<i> &quot;subinterfaces&quot; is no cisco speak for aliases.
+</I>&gt;<i> The Cisco speak for aliases is &quot;secondary&quot;
+</I>&gt;<i> In Cisco terms you can add an alias to an interface by typing:
+</I>&gt;<i> ip address &lt;address&gt; &lt;mask&gt; secondary.
+</I>&gt;<i> Even a third address can be added with this statement.
+</I>&gt;<i>
+</I>&gt;<i> The subinterface concept is mainly used for running IP over frame relay
+</I>&gt;<i> networks.
+</I>&gt;<i> You can have an interface to a frame relay network, with multiple
+</I>&gt;<i> subinterfaces for connecting to multiple hosts on the same frame relay
+</I>&gt;<i> network.
+</I>&gt;<i> This has to do with the NBMA (non-broadcast multiple access) nature of
+</I>&gt;<i> frame relay. This basically means that basic ARP does not work on frame
+</I>&gt;<i> relay. And this is the reason why subinterfaces are really useful on
+</I>&gt;<i> these networks.
+</I>&gt;<i>
+</I>&gt;<i> But I do not fully know this matter in Cisco, nor in Linux speak.
+</I>&gt;<i>
+</I>&gt;<i> More information on the Cisco concept of subinterfaces can be found at:
+</I>&gt;<i> <A HREF="http://www.cisco.com/warp/public/779/smbiz/service/knowledge/wan/subifs.htm">http://www.cisco.com/warp/public/779/smbiz/service/knowledge/wan/subifs.htm</A>
+</I>&gt;<i>
+</I>&gt;<i> I guess John wants to know the capabilities of Linux concerning frame
+</I>&gt;<i> relay, but I don't know anyone with experience on this is on the list.
+</I>&gt;<i>
+</I>&gt;<i> The linux equivalent for subinterfaces depends on what you want to do
+</I>&gt;<i> with it, I guess.
+</I>&gt;<i>
+</I>&gt;<i> bert hubert wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt; On Wed, Jan 17, 2001 at 09:32:01PM -0500, John Russo wrote:
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;&gt; Does Linux support the concept of subinterfaces?  If so can anyone point
+</I>&gt;<i> &gt;&gt; me in the right direction for docs?
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; I think 'subinterfaces' are Cisco speak for IP aliases - if so, yes, try
+</I>&gt;<i> &gt; this:
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; ip addr add your.ip.address.here dev eth0
+</I>&gt;<i>
+</I>&gt;<i> _______________________________________________
+</I>&gt;<i> LARTC mailing list / <A HREF="mailto:LARTC@mailman.ds9a.nl">LARTC@mailman.ds9a.nl</A>
+</I>&gt;<i> <A HREF="http://mailman.ds9a.nl/mailman/listinfo/lartc">http://mailman.ds9a.nl/mailman/listinfo/lartc</A> HOWTO: <A HREF="http://ds9a.nl/2.4Routing/">http://ds9a.nl/2.4Routing/</A>
+</I>
+
+
+
+
+
+</PRE>
+

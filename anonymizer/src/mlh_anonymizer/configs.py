@@ -105,4 +105,5 @@ OUTPUT_DIR_PATH: str = os.getenv("OUTPUT_DIR")
 
 # defaults to maximum compression for efficient storage
 # this is very resource intensive, and high levels come with diminishing returns
-COMPRESSION_LEVEL: int = int(os.getenv("COMPRESSION_LEVEL", "22"))
+compression_value = os.getenv("COMPRESSION_LEVEL", "22").strip()
+COMPRESSION_LEVEL: int = int(compression_value if compression_value.isdecimal() else 22)

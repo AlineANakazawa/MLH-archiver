@@ -68,8 +68,9 @@ def join_pool_with_escalation(pool, timeout: float = 3.0) -> None:
     alive = [p for p in workers if p.is_alive()]
     if not alive:
         return
-    logging.info("%d workers still alive after %.1fs, sending SIGKILL...",
-                 len(alive), timeout)
+    logging.info(
+        "%d workers still alive after %.1fs, sending SIGKILL...", len(alive), timeout
+    )
     kill_pool_workers(pool)
 
 

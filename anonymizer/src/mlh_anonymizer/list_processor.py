@@ -53,9 +53,7 @@ def parse_mail_at(mailing_list: str, input_dir_path: str, output_dir_path: str) 
                     yield (
                         f"__id_map_{split_column}",
                         read_dataset().select(
-                            pl.col(split_column).alias(
-                                f"__original_{split_column}"
-                            ),
+                            pl.col(split_column).alias(f"__original_{split_column}"),
                             pl.col(split_column),
                         ),
                         {split_column_type: [split_column]},

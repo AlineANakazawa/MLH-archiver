@@ -22,7 +22,11 @@ The anonymizer applies SHA1 hashing to personal identification fields:
 ```
 Original:  user@example.com
            ↓
-Anonymized: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
+Anonymized: 63a710569261a24b3766275b7000ce8d7b32e2f7
+
+Original: Name <user@example.com>
+           ↓
+Anonymized: 709a23220f2c3d64d1e1d6d18c4d5280f8d82fca <63a710569261a24b3766275b7000ce8d7b32e2f7>
 ```
 
 The same email address always produces the same hash, allowing you to:
@@ -210,7 +214,6 @@ anonymizer/
 ### Development
 - `pytest` (>=9.0) - Testing framework
 - `nox` (>=2026.2) - Test automation
-- `freezegun` (>=1.5) - Time mocking for tests
 
 ## Container Build
 
@@ -232,26 +235,6 @@ While SHA1 is considered cryptographically broken for security-critical applicat
 - The goal is privacy protection, not cryptographic security
 - Collision resistance is not critical
 - Deterministic hashing is needed for data linkage
-
-### Re-identification Risk
-
-Be aware that:
-- Hashed emails can be reversed via rainbow table attacks
-- Common email addresses are easily reversible
-- Consider adding a secret salt for additional protection
-
-### Adding Salt (Advanced)
-
-For enhanced security, modify the hashing to include a salt:
-
-```python
-import hashlib
-
-def hash_with_salt(email: str, salt: str) -> str:
-    return hashlib.sha1((email + salt).encode()).hexdigest()
-```
-
-Store the salt securely and separately from the data.
 
 ## Integration with Other Components
 

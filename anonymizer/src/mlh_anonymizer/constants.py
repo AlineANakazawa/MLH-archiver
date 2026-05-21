@@ -7,11 +7,7 @@ that define the anonymization schema.
 # Columns to anonymize with direct SHA-1 hashing
 ANONYMIZE_COLUMNS = {
     # columns with string structure
-    "str": [
-        "from",
-        "to",
-        "cc",
-    ],
+    "str": ["from", "to", "cc", "raw_body"],
     # Columns with nested structures to anonymize
     # Format: "parent.child" where child is the key to anonymize
     "map": [

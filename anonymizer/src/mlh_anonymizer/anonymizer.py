@@ -1,15 +1,97 @@
 """Anonymization functions for applying SHA-1 hashing to various data types."""
 
 import logging
+import re
 from typing import Any, Union
 
 from mlh_anonymizer.hasher import generate_sha1_hash
 
 logger = logging.getLogger(__name__)
 
+EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+BRACKET_IDENTITY_RE = re.compile(r"([^<]*?)\s*<([^>]+@[^>]+)>")
+
+
+def extract_name_and_prefix(text_before: str) -> tuple[str, str]:
+    if not text_before:
+        return "", ""
+
+    seps = list(re.finditer(r"[:,;]", text_before))
+    if seps:
+        last_sep = seps[-1]
+        sep_end = last_sep.end()
+        ws_end = sep_end
+        while ws_end < len(text_before) and text_before[ws_end] in (" ", "\t"):
+            ws_end += 1
+        prefix = text_before[:ws_end]
+        name = text_before[ws_end:].strip()
+        return name, prefix
+
+    name = text_before.strip()
+    return name, ""
+
+
+def replace_bracketed_identity(m: re.Match) -> str:
+    before = m.group(1)
+    email = m.group(2)
+
+    name, prefix = extract_name_and_prefix(before)
+
+    if name:
+        return f"{prefix}{generate_sha1_hash(name)} <{generate_sha1_hash(email)}>"
+    return f"{before}<{generate_sha1_hash(email)}>"
+
+
+def anonymize_line(line: str, is_multiline: bool = False) -> str:
+    line = BRACKET_IDENTITY_RE.sub(replace_bracketed_identity, line)
+
+    matches = list(re.finditer(EMAIL_RE, line))
+    if not matches:
+        return line
+
+    result = []
+    last_end = 0
+    for m in matches:
+        email = m.group(0)
+        start, end = m.start(), m.end()
+
+        if start > 0 and line[start - 1] == "<":
+            continue
+        if end < len(line) and line[end] == ">":
+            continue
+
+        text_before = line[last_end:start]
+
+        if not text_before.strip():
+            result.append(text_before)
+            result.append(email)
+            last_end = end
+            continue
+
+        name, prefix = extract_name_and_prefix(text_before)
+
+        if name:
+            result.append(prefix)
+            result.append(name)
+            result.append(" <")
+            result.append(generate_sha1_hash(email))
+            result.append(">")
+        else:
+            result.append(text_before)
+            result.append(generate_sha1_hash(email))
+
+        last_end = end
+
+    result.append(line[last_end:])
+    return "".join(result)
+
 
 def anonymize_string(row_val: Any) -> Union[str, list[str]]:
-    """Apply SHA-1 anonymization to a row value.
+    """Apply SHA-1 anonymization to identities within a row value.
+
+    Detects identity patterns within strings and hashes only the
+    identified name and email components. Processes line by line
+    to avoid matching identities split across multiple lines.
 
     Handles strings and lists of strings.
 
@@ -17,15 +99,18 @@ def anonymize_string(row_val: Any) -> Union[str, list[str]]:
         row_val: Value to anonymize (str or list[str])
 
     Returns:
-        Anonymized value (SHA-1 hash or list of hashes)
+        Anonymized value with identities hashed
 
     Raises:
         Exception: If type is not supported
     """
     if isinstance(row_val, str):
-        return generate_sha1_hash(row_val)
+        lines = row_val.split("\n")
+        is_multiline = len(lines) > 1
+        result_lines = [anonymize_line(line, is_multiline) for line in lines]
+        return "\n".join(result_lines)
     if hasattr(row_val, "__iter__"):
-        return [generate_sha1_hash(val) for val in row_val]
+        return [anonymize_string(val) for val in row_val]
     raise Exception(f"Unmapped type for {type(row_val)}")
 
 

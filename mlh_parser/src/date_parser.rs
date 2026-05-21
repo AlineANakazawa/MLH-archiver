@@ -175,7 +175,6 @@ fn last_effort_date_finder(date_text: &str) -> Option<DateTime<FixedOffset>> {
 
     // last effort lib
     if let Ok(date) = dateparser::parse(date_text.trim()) {
-        log::warn!("the external dateparser lib was able to parse this date: {date_text}");
         Some(date.into())
     } else {
         None

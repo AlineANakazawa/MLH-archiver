@@ -58,7 +58,7 @@ def main(input_map, output_dir):
             df.write_csv(result_path)
             print(f"(Result saved in {result_path})\n")
         except KeyboardInterrupt:
-            print("\nSaindo.")
+            print("\Leaving.")
             break
         except Exception as e:
             print(f"Erro: {e}\n")

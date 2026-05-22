@@ -2,17 +2,16 @@
 
 import os
 import multiprocessing
-import math
 
 """
-MAX_TOTAL_THREADS = total thread budget (workers + polars threads per worker).
+MAX_TOTAL_THREADS constrains the product n_proc × polars_threads — the
+approximate number of concurrent threads across all worker processes.
   - Defaults to half the available CPU cores.
   - N_PROC env var: explicit override for worker process count.
   - POLARS_MAX_THREADS env var: explicit override for polars threads per worker.
   - If neither is set, split MAX_TOTAL_THREADS automatically:
-      * total <= 1  → 1 worker, 2 polars threads (minimum)
-      * total <= 10 → 1 worker, rest to polars (min 2)
-      * total > 10  → 40% workers, 60% polars threads
+      * total <= 1 → 1 worker, 2 polars threads (minimum)
+      * total > 1  → 60% to workers, Polars gets the rest (min 2)
 """
 
 cpu_count = multiprocessing.cpu_count()
@@ -33,18 +32,20 @@ def _parse_max_total_threads() -> int:
 def split_workers(total: int) -> tuple[int, int]:
     """Split total thread budget into (n_proc, polars_threads).
 
+    Uses a multiplicative model: n_proc × polars_threads ≈ total.
+    Workers get the larger share (more mailing lists processed in parallel);
+    Polars threads are kept lean.
+
     Args:
-        total: Maximum total threads to allocate.
+        total: Maximum concurrent threads to allow.
 
     Returns:
         Tuple of (worker processes, polars threads per worker).
     """
     if total <= 1:
         return 1, 2
-    if total <= 10:
-        return 1, max(2, total - 1)
-    n_proc = max(1, math.ceil(total * 0.4))
-    polars = max(2, total - n_proc)
+    n_proc = max(2, int(total * 0.6))
+    polars = max(2, total // n_proc)
     return n_proc, polars
 
 

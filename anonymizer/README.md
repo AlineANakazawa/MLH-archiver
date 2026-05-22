@@ -133,17 +133,16 @@ Thread allocation is controlled by three variables. Explicit `N_PROC` and `POLAR
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MAX_TOTAL_THREADS` | half CPU cores | Total thread budget (worker processes + Polars threads per worker) |
+| `MAX_TOTAL_THREADS` | half CPU cores | Approximate concurrent thread cap (workers × Polars threads per worker) |
 | `N_PROC` | auto | Number of multiprocessing worker processes. Overrides the auto-split. |
 | `POLARS_MAX_THREADS` | auto | Number of threads per Polars worker. Overrides the auto-split. |
 
-When `N_PROC` and `POLARS_MAX_THREADS` are both unset, the script splits `MAX_TOTAL_THREADS` automatically:
+When `N_PROC` and `POLARS_MAX_THREADS` are both unset, the split keeps `N_PROC × POLARS_MAX_THREADS ≈ MAX_TOTAL_THREADS`, biasing toward more workers and lean Polars pools to avoid thread exhaustion:
 
-| Budget (`MAX_TOTAL_THREADS`) | Workers (`N_PROC`) | Polars threads |
-|------------------------------|---------------------|----------------|
-| ≤ 1                          | 1                   | 2              |
-| 2–10                         | 1                   | remainder (min 2) |
-| > 10                         | 40% of budget       | 60% of budget  |
+| Budget (`MAX_TOTAL_THREADS`) | Workers (`N_PROC`) | Polars threads | Actual threads ≈ |
+|------------------------------|---------------------|----------------|-------------------|
+| ≤ 1                          | 1                   | 2              | 2                |
+| > 1                         | 60% of budget       | budget ÷ workers (min 2) | budget (approx)  |
 
 ### Other
 

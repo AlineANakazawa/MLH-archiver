@@ -46,22 +46,28 @@ def main(input_map, output_dir):
         df.show()
 
     df = None
-    try:
-        query = input("Enter the SQL query:\n ")
-        df = ctx.sql(query)
-        df.show()
-    except Exception as e:
-        print(type(e))
-        if "datafusion" in str(e):
-            print(f"Caught a DataFusion-specific error: {e}")
-        else:
-            print(f"An unexpected error occurred: {e}")
-
+    result_path = os.path.join(output_dir, "sql_results")
+    while True:
+        try:
+            query = input("Enter the SQL query (Ctrl+C to exit): ")
+            if not query.strip(): 
+                continue
+            df = ctx.sql(query)
+            df.show()
+            
+            df.write_csv(result_path)
+            print(f"(Result saved in {result_path})\n")
+        except KeyboardInterrupt:
+            print("\nSaindo.")
+            break
+        except Exception as e:
+            print(f"Erro: {e}\n")
     if df is not None:
         try:
-            df.write_csv(output_dir + "/sql_results/")
+            df.write_csv(result_path)
         except Exception as e:
             print(
                 f"Writing CSV failed with an error. Falling back to Parquet. Error: {e}"
             )
-            df.write_parquet(output_dir + "/sql_results/")
+            df.write_parquet(result_path)
+

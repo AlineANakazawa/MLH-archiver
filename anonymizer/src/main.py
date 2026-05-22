@@ -7,6 +7,7 @@ import os
 import logging
 import signal
 import time
+from datetime import datetime
 from multiprocessing import get_context
 import subprocess
 
@@ -18,6 +19,8 @@ from mlh_anonymizer.configs import (
     OUTPUT_DIR_PATH,
 )
 from mlh_anonymizer.list_processor import parse_mail_at
+
+status_path = f"{OUTPUT_DIR_PATH}/__status/"
 
 # Configure logging
 level = logging.INFO
@@ -35,7 +38,22 @@ logger = logging.getLogger(__name__)
 
 def parse_mail_at_wrap(mailing_list: str) -> None:
     """Wrapper for parse_mail_at with fixed paths."""
-    parse_mail_at(mailing_list, INPUT_DIR_PATH, OUTPUT_DIR_PATH)
+    status = open(
+        f"{status_path}/{mailing_list}.log",
+        "w",
+        encoding="utf-8",
+    )
+
+    try:
+        status.write(f"Starting {mailing_list} at {datetime.now().isoformat()}\n")
+        status.flush()
+        parse_mail_at(mailing_list, INPUT_DIR_PATH, OUTPUT_DIR_PATH)
+        status.write(f"Completed {mailing_list} at {datetime.now().isoformat()}\n")
+        status.flush()
+    except Exception as e:
+        status.write(f"Failed {mailing_list} at {datetime.now().isoformat()}:  {e}\n")
+        status.flush()
+        raise e
 
 
 def main() -> None:
@@ -43,6 +61,9 @@ def main() -> None:
     """Main entry point for the anonymizer."""
     # Parse specific lists or all in the directory
     lists = LISTS_TO_PARSE if len(LISTS_TO_PARSE) > 0 else os.listdir(INPUT_DIR_PATH)
+
+    os.makedirs(OUTPUT_DIR_PATH, exist_ok=True)
+    os.makedirs(status_path, exist_ok=True)
 
     if N_PROC == 1:
         sequential(lists)

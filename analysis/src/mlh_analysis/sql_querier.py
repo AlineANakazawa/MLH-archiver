@@ -26,9 +26,7 @@ def main(input_map, output_dir):
             continue
         partition_cols = _detect_partition_cols(data_path)
         if partition_cols:
-            ctx.register_parquet(
-                name, data_path, table_partition_cols=partition_cols
-            )
+            ctx.register_parquet(name, data_path, table_partition_cols=partition_cols)
         else:
             ctx.register_parquet(name, data_path)
 
@@ -55,4 +53,11 @@ def main(input_map, output_dir):
         else:
             print(f"An unexpected error occurred: {e}")
 
-    df.write_csv(output_dir +"/sql_results/")
+    if df is not None:
+        try:
+            df.write_csv(output_dir + "/sql_results/")
+        except Exception as e:
+            print(
+                f"Writing CSV failed with an error. Falling back to Parquet. Error: {e}"
+            )
+            df.write_parquet(output_dir + "/sql_results/")

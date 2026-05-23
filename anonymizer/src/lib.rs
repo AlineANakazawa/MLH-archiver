@@ -14,6 +14,8 @@ pub mod reader;
 pub mod transform;
 pub mod writer;
 
+use crate::constants::BATCH_MAX_RECORDS;
+use polars::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -81,8 +83,8 @@ fn resolve_list_dir(input_dir: &Path, mailing_list: &str) -> PathBuf {
     bare
 }
 
-/// Anonymizes all rows for a single mailing list: reads input Parquet,
-/// processes in batches using zero-copy slices, and writes the anonymized output.
+/// Anonymizes all rows for a single mailing list: reads input Parquet in batches,
+/// anonymizes each batch, and writes the output with row group control.
 pub fn process_mailing_list(
     mailing_list: &str,
     input_dir: &Path,
@@ -108,19 +110,61 @@ pub fn process_mailing_list(
         main_output_path.display()
     );
 
-    let df = reader::read_parquet_dir(&list_input_path)?;
-    let total_rows = df.height();
+    let mut main_batches: Vec<DataFrame> = Vec::new();
+    let mut id_map_batches: Vec<DataFrame> = Vec::new();
+    let mut total_rows = 0usize;
+    let mut batch_count = 0usize;
 
-    let id_map = transform::build_id_map(&df)?;
+    reader::read_parquet_dir_batched(&list_input_path, BATCH_MAX_RECORDS, |df| {
+        batch_count += 1;
+        let rows = df.height();
+        total_rows += rows;
 
-    let mut df = transform::anonymize_dataframe(df)?;
+        log::info!(
+            " {} batch {}: read {} rows ({} total)",
+            mailing_list,
+            batch_count,
+            rows,
+            total_rows,
+        );
 
-    writer::write_parquet(&main_output_path, compression, &mut df)?;
-    writer::write_parquet(&id_map_output_path, compression, &mut id_map.clone())?;
+        let id_map = transform::build_id_map(&df)?;
+        let anon_df = transform::anonymize_dataframe(df)?;
+
+        id_map_batches.push(id_map);
+        main_batches.push(anon_df);
+
+        Ok(())
+    })?;
+
+    if main_batches.is_empty() {
+        log::warn!("No data found for list '{}'", mailing_list);
+        return Ok(());
+    }
 
     log::info!(
-        "Saved {} anonymized rows for list '{}'",
+        "  concatenating {} batches for list '{}'",
+        main_batches.len(),
+        mailing_list,
+    );
+
+    let mut main_df = main_batches.remove(0);
+    for batch in main_batches {
+        main_df.vstack_mut(&batch)?;
+    }
+
+    let mut id_map_df = id_map_batches.remove(0);
+    for batch in id_map_batches {
+        id_map_df.vstack_mut(&batch)?;
+    }
+
+    writer::write_parquet(&main_output_path, compression, &mut main_df)?;
+    writer::write_parquet(&id_map_output_path, compression, &mut id_map_df)?;
+
+    log::info!(
+        "Saved {} anonymized rows in {} batches for list '{}'",
         total_rows,
+        batch_count,
         mailing_list,
     );
 

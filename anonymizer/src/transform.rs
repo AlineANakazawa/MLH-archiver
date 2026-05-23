@@ -11,20 +11,18 @@ use polars::prelude::*;
 /// Transform a DataFrame by anonymizing PII columns.
 pub fn anonymize_dataframe(mut df: DataFrame) -> Result<DataFrame> {
     for col_name in ANONYMIZE_STR_COLUMNS {
-        if df.get_column_index(col_name).is_some() {
-            let s = df.drop_in_place(col_name)?;
-            let s = s.as_materialized_series().clone();
+        if let Some(idx) = df.get_column_index(col_name) {
+            let s = df.column(col_name)?.as_materialized_series().clone();
             let anon = anonymize_series(&s)?;
-            df.with_column(Column::from(anon))?;
+            df.replace_column(idx, Column::from(anon))?;
         }
     }
 
     for (parent_col, child_key) in ANONYMIZE_MAP_COLUMNS {
-        if df.get_column_index(parent_col).is_some() {
-            let s = df.drop_in_place(parent_col)?;
-            let s = s.as_materialized_series().clone();
+        if let Some(idx) = df.get_column_index(parent_col) {
+            let s = df.column(parent_col)?.as_materialized_series().clone();
             let anon = anonymize_trailers(&s, child_key)?;
-            df.with_column(Column::from(anon))?;
+            df.replace_column(idx, Column::from(anon))?;
         }
     }
 

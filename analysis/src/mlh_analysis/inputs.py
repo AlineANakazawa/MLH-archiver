@@ -18,8 +18,8 @@ def resolve_inputs(input_dirs):
 
         entries = os.listdir(d)
 
-        if "__id_map_from" in entries and id_map_dir is None:
-            id_map_dir = os.path.join(d, "__id_map_from")
+        if "id_map_from" in entries and id_map_dir is None:
+            id_map_dir = os.path.join(d, "id_map_from")
 
         if lineage_dir is None:
             if os.path.isfile(os.path.join(d, "lineage.parquet")):
@@ -29,23 +29,23 @@ def resolve_inputs(input_dirs):
         if dataset_dir is None and has_list_dirs:
             dataset_dir = d
 
-        if anon_dataset_dir is None and "__main_dataset" in entries:
-            anon_dataset_dir = os.path.join(d, "__main_dataset")
+        if "anonymizer" in d and anon_dataset_dir is None and "dataset" in entries:
+            anon_dataset_dir = os.path.join(d, "dataset")
 
-        if dataset_dir is None and not has_list_dirs:
-            if "__main_dataset" in entries:
-                dataset_dir = os.path.join(d, "__main_dataset")
-            elif "dataset" in entries:
+        # output/parser/dataset
+        # if missing, use the anonimyzed in its place
+        if "parser" in d and dataset_dir is None and not has_list_dirs:
+            if "dataset" in entries:
                 dataset_dir = os.path.join(d, "dataset")
 
-    if dataset_dir is None:
+    if dataset_dir is None and anon_dataset_dir is None:
         raise FileNotFoundError(
             f"No dataset directory found in: {input_dirs}. "
-            "Expected 'list=*/' subdirectories, '__main_dataset/', or 'dataset/'."
+            "Expected 'list=*/' subdirectories, 'dataset/'"
         )
 
     return {
-        "dataset": dataset_dir,
+        "dataset": dataset_dir or anon_dataset_dir if anon_dataset_dir else "",
         "anon_dataset": anon_dataset_dir or "",
         "lineage": lineage_dir or "",
         "id_map": id_map_dir or "",

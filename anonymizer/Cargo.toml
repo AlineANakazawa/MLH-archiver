@@ -1,0 +1,29 @@
+[package]
+name = "anonymizer"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+rayon = "1.12"
+anyhow = "1.0"
+built = { version = "0.8", features = ["chrono", "semver" ] }
+clap = { version = "4.6", features = ["derive"] }
+config = { version = "0.15", default-features = false, features = ["json", "yaml"] }
+env_logger = { version = "0.11", features = ["kv"] }
+log = { version = "0.4", features = ["kv", "std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2.0"
+regex = "1"
+glob = "0.3"
+sha1 = "0.11"
+polars = { version = "0.53.0", features = ["parquet", "dtype-struct", "rows", "object", "performant"] }
+polars-arrow = "0.53.0"
+polars-utils = "0.53.0"
+
+[dev-dependencies]
+tempfile = "3"
+walkdir = "2.5"
+
+[build-dependencies]
+built = { version = "0.8", features = ["cargo-lock", "dependency-tree", "chrono", "semver", "git2"] }

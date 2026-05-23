@@ -203,7 +203,7 @@ Here's an example of querying mailing list data with Polars:
 import polars as pl
 
 # Load the dataset
-df = pl.scan_parquet("../output/anonymizer/**/*.parquet")
+df = pl.scan_parquet("../output/anonymizer/dataset")
 
 # Count emails per day
 daily_activity = (
@@ -271,7 +271,7 @@ Example:
 # src/my_analysis.py
 import polars as pl
 
-df = pl.scan_parquet("../output/anonymizer/**/*.parquet")
+df = pl.scan_parquet("../output/anonymizer/dataset/**/*.parquet")
 # ... your analysis ...
 ```
 

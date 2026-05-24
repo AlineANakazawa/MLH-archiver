@@ -460,7 +460,7 @@ fn test_parse_mail_at() {
     let output_parquet = output_dir
         .path()
         .join("dataset")
-        .join(format!("list={}", list_name))
+        .join(list_name)
         .join("list_data.parquet");
 
     let out_df = read_parquet_as_df(&output_parquet);
@@ -533,5 +533,43 @@ fn test_parse_mail_at() {
                 panic!("Unexpected dtype {} for column '{}'", other, name);
             }
         }
+    }
+}
+
+#[test]
+fn test_process_mailing_list_output_path() {
+    let input_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().unwrap();
+
+    // Bare name input — output should use bare name
+    {
+        let list_name = "test_list_bare";
+        let list_input_dir = input_dir.path().join(list_name);
+        fs::create_dir_all(&list_input_dir).unwrap();
+        let mut df = build_test_df();
+        write_test_parquet(&list_input_dir, &mut df);
+
+        process_mailing_list(list_name, input_dir.path(), output_dir.path(), 0).unwrap();
+
+        let expected_path = output_dir.path().join("dataset").join(list_name).join("list_data.parquet");
+        assert!(expected_path.exists(), "bare name: expected output at {}", expected_path.display());
+    }
+
+    // Hive format input (list=name) — output should NOT get list=list=name
+    {
+        let list_name = "hive_test";
+        let hive_dir_name = format!("list={}", list_name);
+        let list_input_dir = input_dir.path().join(&hive_dir_name);
+        fs::create_dir_all(&list_input_dir).unwrap();
+        let mut df = build_test_df();
+        write_test_parquet(&list_input_dir, &mut df);
+
+        process_mailing_list(&hive_dir_name, input_dir.path(), output_dir.path(), 0).unwrap();
+
+        let expected_path = output_dir.path().join("dataset").join(&hive_dir_name).join("list_data.parquet");
+        assert!(expected_path.exists(), "hive name: expected output at {}", expected_path.display());
+
+        let wrong_path = output_dir.path().join("dataset").join(format!("list={}", hive_dir_name)).join("list_data.parquet");
+        assert!(!wrong_path.exists(), "double list= prefix should not exist at {}", wrong_path.display());
     }
 }

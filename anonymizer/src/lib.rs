@@ -95,12 +95,12 @@ pub fn process_mailing_list(
 
     let main_output_dir = output_dir
         .join("dataset")
-        .join(format!("list={}", mailing_list));
+        .join(mailing_list);
     let main_output_path = main_output_dir.join("list_data.parquet");
 
     let id_map_output_dir = output_dir
         .join(format!("id_map_{}", constants::SPLIT_DATASET_COLUMN))
-        .join(format!("list={}", mailing_list));
+        .join(mailing_list);
     let id_map_output_path = id_map_output_dir.join("list_data.parquet");
 
     log::info!(

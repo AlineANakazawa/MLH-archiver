@@ -1,5 +1,7 @@
 python-lint:analysis:
   stage: lint
+  tags:
+    - self-hosted 
   image: python:3.14-slim
   rules:
     - changes:

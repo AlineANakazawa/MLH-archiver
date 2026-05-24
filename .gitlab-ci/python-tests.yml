@@ -1,5 +1,7 @@
 python-tests:analysis:
   stage: test
+  tags:
+    - self-hosted 
   image: python:3.14-slim
   rules:
     - changes:

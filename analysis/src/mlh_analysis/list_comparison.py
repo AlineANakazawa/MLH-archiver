@@ -10,15 +10,19 @@ import glob
 sns.set_style("whitegrid")
 
 
-def main(dataset_dir, output_dir):
+def main(working_dir, output_dir):
+    if not working_dir:
+        print("Error: no input directory available.")
+        return
 
-    # pass list names split by ","
-    default_lists = "amd-gfx,intel-gfx,linux-iio,rust-for-linux"
-    LISTS_OF_INTEREST = os.environ.get("LISTS_OF_INTEREST", default_lists).split(",")
+    default_lists = "netdev,bpf,rust-for-linux"
+    LISTS_OF_INTEREST = (os.environ.get("LISTS_OF_INTEREST") or default_lists).split(
+        ","
+    )
     LISTS_OF_INTEREST = [li for li in LISTS_OF_INTEREST if li]
 
     if not LISTS_OF_INTEREST:
-        raw_dirs = glob.glob(f"{dataset_dir}/list=*")
+        raw_dirs = glob.glob(f"{working_dir}/list=*")
         LISTS_OF_INTEREST = sorted(
             [os.path.basename(d).removeprefix("list=") for d in raw_dirs]
         )
@@ -27,7 +31,7 @@ def main(dataset_dir, output_dir):
     df = None
 
     for m_list in LISTS_OF_INTEREST:
-        new_list_df = pl.read_parquet(f"{dataset_dir}/list={m_list}/*.parquet")
+        new_list_df = pl.read_parquet(f"{working_dir}/list={m_list}/*.parquet")
         new_list_df = new_list_df.with_columns(pl.lit(m_list).alias("list"))
         if df is None:
             df = new_list_df

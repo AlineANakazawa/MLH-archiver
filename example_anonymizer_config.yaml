@@ -1,0 +1,8 @@
+# Example anonymizer configuration file
+
+nthreads: 2
+input_dir_path: "./output/parser/dataset/"
+output_dir_path: "./output/anonymizer/"
+lists_to_anonymize: 
+  # - linux-api
+  # - lkml

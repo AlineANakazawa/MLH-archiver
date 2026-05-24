@@ -23,7 +23,7 @@ This project consists of four main components:
 |-----------|-------------|----------|
 | **[MLH Archiver](mlh_archiver/)** | Downloads emails from NNTP servers and stores them as raw emails or Parquet (configurable) | Rust |
 | **[MLH Parser](mlh_parser/)** | Parses raw emails into structured Parquet datasets with Hive partitioning | Rust |
-| **[MLH Anonymizer](anonymizer/)** | Pseudo-anonymizes personal identification using SHA1 digests | Python |
+| **[MLH Anonymizer](anonymizer/)** | Pseudo-anonymizes personal identification using SHA1 digests | Rust |
 | **[MLH Analysis](analysis/)** | Example analysis scripts for exploring mailing list data | Python |
 
 Each component has its own detailed documentation:
@@ -44,7 +44,7 @@ Each component has its own detailed documentation:
 One of the dependencies is a git submodule. To build correctly
 
    ```bash
-   git clone --recurse-submodules git@gitlab.com/ccsl-usp/codev/MLH-archiver.git
+   git clone --recurse-submodules git@gitlab.com:ccsl-usp/codev/MLH-archiver.git
    ```
 
    Or if you dont have your ssh keys configured in GitHub,
@@ -247,8 +247,8 @@ The root [`Makefile`](Makefile) orchestrates all components. Run commands from t
 
 | Component | Requirements |
 |-----------|--------------|
-| **Archiver & Parser** | Rust/Cargo, or Podman/Docker for containerized builds |
-| **Anonymizer** | Podman/Podman-compose or Docker/Docker-compose |
+| **Archiver, Parser & Anonymizer** | Rust/Cargo, or Podman/Docker for containerized builds |
+| **Analysis** | Python 3.12+/uv, or Podman/Docker for containerized runs |
 
 ---
 
@@ -406,8 +406,11 @@ The parser is implemented in Rust and uses:
 
 The anonymizer applies SHA1 hashing to personally identifiable information (PII):
 
-- Deterministic: Same input always produces the same hash
-- Enables longitudinal analysis while protecting privacy
+- **Polars**: Fast columnar transformations with parallel execution per mailing list
+- **SHA1 Hashing**: Deterministic pseudo-anonymization of PII fields (`from`, `to`, `cc`, `trailers`, `raw_body` (identities contained in it))
+- **Parquet Output**: Output partitioned by mailing list under `dataset/` (anonymized data) and `id_map_from/` (identity map for validation)
+- **Configuration**: YAML-based config file (`example_anonymizer_config.yaml`) supporting thread count, I/O paths, and list selection
+- **Batch Processing**: Row-group controlled output with configurable batch size for memory efficiency
 - See [Anonymizer Documentation](anonymizer/README.md#security-considerations) for security considerations
 
 ---

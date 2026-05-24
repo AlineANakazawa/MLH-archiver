@@ -20,7 +20,7 @@ def main():
 
     scripts = {
         "list_comparison": lambda: list_comparison.main(
-            inputs["dataset"], output_dir
+            inputs["dataset"], inputs["anon_dataset"], output_dir
         ),
         "list_sizes": lambda: list_sizes.main(inputs["dataset"], output_dir),
         "unique_authors": lambda: unique_authors.main(inputs["id_map"], output_dir),

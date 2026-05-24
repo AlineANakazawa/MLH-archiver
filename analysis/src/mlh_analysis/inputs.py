@@ -45,7 +45,7 @@ def resolve_inputs(input_dirs):
         )
 
     return {
-        "dataset": dataset_dir or anon_dataset_dir if anon_dataset_dir else "",
+        "dataset": dataset_dir or anon_dataset_dir or "",
         "anon_dataset": anon_dataset_dir or "",
         "lineage": lineage_dir or "",
         "id_map": id_map_dir or "",

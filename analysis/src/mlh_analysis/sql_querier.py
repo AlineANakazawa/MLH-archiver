@@ -73,7 +73,7 @@ def main(input_map, output_dir):
             print("\Leaving.")
             break
         except Exception as e:
-            print(f"Erro: {e}\n")
+            print(f"Error: {e}\n")
         if df is not None:
             try:
                 df.write_csv(result_path)

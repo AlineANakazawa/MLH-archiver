@@ -2,6 +2,7 @@
 //!
 //! Also handles obfuscated email addresses (e.g. `user (a) domain.tld` → `user@domain.tld`).
 
+use crate::date_parser;
 use chrono::{DateTime, FixedOffset};
 use mail_parser::{Message, MessageParser};
 use regex::Regex;
@@ -94,14 +95,13 @@ pub fn header_value_to_string_list(val: &mail_parser::HeaderValue<'_>) -> Option
 }
 
 pub fn header_value_date(val: &mail_parser::HeaderValue<'_>) -> Option<DateTime<FixedOffset>> {
-    let date_result = match val {
-        mail_parser::HeaderValue::DateTime(d) => Some(d.to_rfc3339()),
-        mail_parser::HeaderValue::Received(r) => r.date.as_ref().map(|dt| dt.to_rfc3339()),
+    match val {
+        mail_parser::HeaderValue::DateTime(d) => date_parser::mail_datetime_to_chrono(d),
+        mail_parser::HeaderValue::Received(r) => r
+            .date
+            .as_ref()
+            .and_then(date_parser::mail_datetime_to_chrono),
         _ => None,
-    };
-    match date_result {
-        Some(d) => chrono::DateTime::parse_from_rfc3339(&d).ok(),
-        None => None,
     }
 }
 

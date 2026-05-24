@@ -233,6 +233,24 @@ pub fn fix_millennium_date(
     date_obj
 }
 
+pub fn mail_datetime_to_chrono(dt: &mail_parser::DateTime) -> Option<DateTime<FixedOffset>> {
+    use chrono::NaiveDate;
+    use chrono::NaiveTime;
+
+    let naive_date = NaiveDate::from_ymd_opt(dt.year as i32, dt.month as u32, dt.day as u32)?;
+    let naive_time = NaiveTime::from_hms_opt(dt.hour as u32, dt.minute as u32, dt.second as u32)?;
+    let naive = naive_date.and_time(naive_time);
+
+    let tz_offset = if dt.tz_before_gmt {
+        -(dt.tz_hour as i32 * 3600 + dt.tz_minute as i32 * 60)
+    } else {
+        dt.tz_hour as i32 * 3600 + dt.tz_minute as i32 * 60
+    };
+
+    let offset = FixedOffset::east_opt(tz_offset)?;
+    offset.from_local_datetime(&naive).single()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

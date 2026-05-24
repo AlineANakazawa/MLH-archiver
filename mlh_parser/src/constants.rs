@@ -11,26 +11,6 @@ use arrow::datatypes::{DataType, Field, Fields, Schema, TimeUnit};
 /// multi-gigabyte test fixtures.
 pub const BATCH_MAX_RECORDS: usize = 50_000;
 
-/// Internal key used for the signature-trailers block in the parsed email dict.
-pub const SIGNED_BLOCK: &str = "trailers";
-
-/// Full set of keys recognized in a parsed email headers map.
-pub const KEYS_MASK: &[&str] = &[
-    "from",
-    "to",
-    "cc",
-    "subject",
-    "date",
-    "message-id",
-    "in-reply-to",
-    "references",
-    "x-mailing-list",
-    SIGNED_BLOCK,
-    "code",
-    "raw_body",
-    "__file_name",
-];
-
 /// The fixed Arrow schema used for all Parquet output.
 ///
 /// Column order: `from, to, cc, subject, date, client-date, message-id,
@@ -60,18 +40,18 @@ pub static PARQUET_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
             true,
         ),
         Field::new(
-            "client-date",
+            "client_date",
             DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
             true,
         ),
-        Field::new("message-id", DataType::Utf8, true),
-        Field::new("in-reply-to", DataType::Utf8, true),
+        Field::new("message_id", DataType::Utf8, true),
+        Field::new("in_reply_to", DataType::Utf8, true),
         Field::new(
             "references",
             DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
             true,
         ),
-        Field::new("x-mailing-list", DataType::Utf8, true),
+        Field::new("x_mailing_list", DataType::Utf8, true),
         Field::new(
             "trailers",
             DataType::List(Arc::new(Field::new(

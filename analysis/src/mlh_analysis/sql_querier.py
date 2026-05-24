@@ -1,4 +1,6 @@
 import os
+import gc
+import time
 
 from datafusion import SessionContext
 
@@ -46,22 +48,39 @@ def main(input_map, output_dir):
         df.show()
 
     df = None
-    try:
-        query = input("Enter the SQL query:\n ")
-        df = ctx.sql(query)
-        df.show()
-    except Exception as e:
-        print(type(e))
-        if "datafusion" in str(e):
-            print(f"Caught a DataFusion-specific error: {e}")
-        else:
-            print(f"An unexpected error occurred: {e}")
-
-    if df is not None:
+    result_path = os.path.join(output_dir, "sql_results")
+    while True:
         try:
-            df.write_csv(output_dir + "/sql_results/")
+            query = ""
+            print('Enter the SQL query terminated by ";" (Ctrl+C to exit):\n▸')
+            while True:
+                line = input("  ").strip()
+                if not line:
+                    continue
+                query = query + "\n" + line
+                if line.endswith(";"):
+                    break
+            print("$ Sending query ...")
+            start = time.time()
+            df = ctx.sql(query)
+            end = time.time()
+            elapsed_time = end - start
+            print(f"! Completed in {elapsed_time:.4f}s. First Lines: ")
+            df.show(num=30)
+
+            print(f"(Attempting to save results in {result_path})\n")
+        except KeyboardInterrupt:
+            print("\Leaving.")
+            break
         except Exception as e:
-            print(
-                f"Writing CSV failed with an error. Falling back to Parquet. Error: {e}"
-            )
-            df.write_parquet(output_dir + "/sql_results/")
+            print(f"Erro: {e}\n")
+        if df is not None:
+            try:
+                df.write_csv(result_path)
+            except Exception as e:
+                print(
+                    f"Writing CSV failed with an error. Falling back to Parquet. Error: {e}"
+                )
+                df.write_parquet(result_path)
+        df = None
+        gc.collect()

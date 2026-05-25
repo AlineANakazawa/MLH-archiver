@@ -37,70 +37,124 @@ Each component has its own detailed documentation:
 
 ## Quick Start
 
-### Step 1: Configure the Archiver
+### Demo Mode (self-contained)
+
+To quickly explore the pipeline with sample mailing list data, run the one-command demo setup:
+
+```bash
+make setup-demo
+```
+
+This generates a local public-inbox v2 repository from the test emails, installs pre-configured config files (backing up any existing ones), and sets up the full pipeline to run against the local data. Once complete, run `make run` to execute the entire pipeline.
+
+### Step 1: Cloning
 
 1. Clone recursively
 
 One of the dependencies is a git submodule. To build correctly
 
-   ```bash
-   git clone --recurse-submodules git@gitlab.com:ccsl-usp/codev/MailingListsHeritage.git
+```bash
+# with http
+git clone --recurse-submodules https://gitlab.com/ccsl-usp/codev/MailingListsHeritage.git
+
+# with ssh
+git clone --recurse-submodules git@gitlab.com:ccsl-usp/codev/MailingListsHeritage.git
+```
+
+Or, if you cloned without recursive: 
+```bash
+# in case you did:
+# git clone https://gitlab.com/ccsl-usp/codev/MailingListsHeritage.git
+cd MailingListsHeritage
+git submodule update --init --recursive
+```
+
+Tip: you can configure git to automatically convert cloning to your preferred protocol:
+
+```bash
+git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+git submodule update --init --recursive
+# and to revert the config:
+git config --global --remove-section url."https://gitlab.com/"
    ```
 
-   Or if you dont have your ssh keys configured in GitHub,
 
-   ```bash
-   git clone https://gitlab.com/ccsl-usp/codev/MailingListsHeritage.git
-   cd MailingListsHeritage
-   git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
-   git submodule update --init --recursive
-   # and to revert the config:
-   git config --global --remove-section url."https://gitlab.com/"
-   ```
+### Step 2: Configuring
 
 1. Copy the example configuration file:
 
-   ```bash
-   cp example_archiver_config.yaml archiver_config.yaml
-   ```
+```bash
+make create-default-configs
+```
 
-2. Edit `archiver_config.yaml` with your NNTP server details:
+or manually copy:
 
-   ```yaml
-    nthreads: 2
-    output_dir: "./output"
-    loop_groups: true
-    write_mode: "parquet:10000"  # or "raw_email"
+```bash
+cp example_archiver_config.yaml   archiver_config.yaml
+cp example_parser_config.yaml     parser_config.yaml
+cp example_anonymizer_config.yaml anonymizer_config.yaml
+```
 
-    read_lists:
-      nntp:
-       - dev.example.me.lists.gfs2
-       - dev.example.me.lists.iommu
-   nntp:
-      hostname: "nntps://nntp.example.com"
-   ```
+2. Edit `archiver_config.yaml` with your Source details. You can read from a NNTP server or a local directory with PublicInbox repositories:
 
-   **Glob patterns** are also supported in `read_lists`. Use `*` or `?` to match multiple lists:
 
-   ```yaml
-   nntp:
-     hostname: "nntp.example.com"
-     port: 119
-   read_lists:
-      nntp:
-       # Match all lists starting with "dev.example."
-       - "dev.example.*"
-       # Match any list containing ".synth"
-       - "*.synth*"
-       # Mix exact names and patterns
-       - specific.list.name
-   ```
+### PublicInbox Examples: 
+
+```yaml
+nthreads: 2
+output_dir: "./output/archiver"
+public_inbox:
+  origin: public-inbox.example.org
+  import_directory: /media/public-inbox-data
+
+```
+
+### NNTP Examples: 
+```yaml
+nthreads: 2
+output_dir: "./output/archiver"
+loop_groups: false
+write_mode: "parquet:50000"  # or "raw_email"
+
+read_lists:
+    nntp:
+    - dev.example.me.lists.gfs2
+    - dev.example.me.lists.iommu
+nntp:
+    hostname: "nntps://nntp.example.com"
+```
+
+**Glob patterns** are also supported in `read_lists`. Use `*` or `?` to match multiple lists:
+
+```yaml
+nntp:
+    hostname: "nntp.example.com"
+    port: 119
+read_lists:
+    nntp:
+    # Match all lists starting with "dev.example."
+    - "dev.example.*"
+    # Match any list containing ".synth"
+    - "*.synth*"
+    # Mix exact names and patterns
+    - specific.list.name
+```
+
+**Authentication** is also supported:
+
+```yaml
+nntp:
+  hostname: "news.example-server.org"
+  username: username
+  password: password
+  port: 119
+```
 
 > [!WARNING]
 > **Do not set `nthreads` above 4 if you don't control the server you are fetching from.**
 > Be respectful to public infrastructure. This tool is designed to avoid being seen as an abusive scraping bot.
 
-### Step 2: Run the Pipeline
+### Step 3: Run the Pipeline
 
 ```bash
 # Build and run the whole Pipeline
@@ -201,7 +255,7 @@ This repository includes a [`.devcontainer`](.devcontainer/) configuration for V
 
 **Usage:**
 
-1. Open the project in VS Code
+1. Open the project in your editor (that supports devcontainer)
 2. Click "Reopen in Container" when prompted
 3. The dev container will build automatically
 
@@ -236,19 +290,10 @@ The root [`Makefile`](Makefile) orchestrates all components. Run commands from t
 | `make debug-parser` | Run parser in debug mode |
 | `make debug-anonymizer` | Run anonymizer in debug mode |
 | `make debug-analysis` | Run analysis in debug mode |
+| `make check_config_files` | Verify required config files are present |
+| `make create-default-configs` | Create config files from examples |
+| `make setup-demo` | One-command demo setup with sample data |
 | `make peek PEEK_PATH=dataset_dir` |  Get basic Statistics about a parquet dataset|
-
-**Archiver Test Coverage:**
-
-- Unit tests: Range parsing, configuration loading, error types
-- Integration tests: Full download, range selection (`"5"`, `"1-3"`, `"1,5,10"`, `"1,3-5,10"`)
-
-**Prerequisites:**
-
-| Component | Requirements |
-|-----------|--------------|
-| **Archiver, Parser & Anonymizer** | Rust/Cargo, or Podman/Docker for containerized builds |
-| **Analysis** | Python 3.12+/uv, or Podman/Docker for containerized runs |
 
 ---
 

@@ -1,0 +1,36 @@
+FROM docker.io/library/debian:trixie-slim
+
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+RUN export DEBIAN_FRONTEND=noninteractive &&\
+	apt-get update && \
+	apt-get install -y \
+	git \
+	perl \
+	sqlite3 \
+	curl \
+	make \
+	build-essential \
+	libyaml-libyaml-perl \
+	libdbd-sqlite3-perl \
+	public-inbox \
+	cpanminus
+
+RUN cpanm -n YAML::XS
+
+COPY mlh_archiver/tests/test_public_inbox/public-inbox /public-inbox
+
+WORKDIR /app
+
+COPY scripts/create_example_pi/create_example_public_inbox.pl /app/
+
+ENV PERL5LIB=/public-inbox/lib
+ENV TMPDIR=/data
+
+RUN mkdir -p /data && chown ${USER_ID}:${GROUP_ID} /data
+
+# Switch to non-root user matching the host (overridable at runtime via --user)
+USER $USER_ID:$GROUP_ID
+
+ENTRYPOINT ["perl", "/app/create_example_public_inbox.pl"]

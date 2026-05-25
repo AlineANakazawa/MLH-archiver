@@ -9,6 +9,9 @@ nthreads: 3
 output_dir: "./output/archiver"
 loop_groups: true
 
+# (optional, the archiver can weite plain .eml files for easy legibility, but
+#  it is a lot more efficient in parquet mode.
+#  defaults to parquet)
 # write_mode:
 #   "parquet:10000"
 #   or "raw_email"

@@ -28,6 +28,26 @@ _build-rs:
 			cargo build --bin $(BIN) --release; \
 	fi
 
+PI_IMAGE ?= mlh-create-example-pi
+
+.PHONY: create-example-pi
+create-example-pi:
+	@echo "==> Building container image for example public-inbox..."
+	$(CONTAINER) build -t $(PI_IMAGE) -f ./create_example_pi/Containerfile $(REPO_ROOT)
+	@echo "==> Creating output directory..."
+	rm -rf $(REPO_ROOT)/data
+	mkdir -p $(REPO_ROOT)/data
+	@echo "==> Generating example public-inbox v2 repository..."
+	CID=$$($(CONTAINER) create \
+		-u $(shell id -u):$(shell id -g) \
+		-w /data \
+		$(PI_IMAGE) \
+		/fixtures /data); \
+	$(CONTAINER) start -a $$CID || { $(CONTAINER) rm $$CID; exit 1; }; \
+	$(CONTAINER) cp $$CID:/data/. $(REPO_ROOT)/data/; \
+	$(CONTAINER) rm $$CID
+	@echo "==> Example public-inbox created at $(REPO_ROOT)/data/"
+
 .PHONY: clean
 clean:
 	@echo "==> Cleaning up scripts artifacts..."

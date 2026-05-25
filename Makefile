@@ -173,6 +173,10 @@ clean:
 	$(MAKE) -C scripts clean
 	$(MAKE) -C mlh_archiver clean
 
+.PHONY: create-example-pi
+create-example-pi:
+	$(MAKE) -C scripts create-example-pi
+
 .PHONY: peek
 peek:
 	$(MAKE) -C scripts peek

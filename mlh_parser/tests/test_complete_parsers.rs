@@ -37,7 +37,12 @@ fn test_complete_parser() {
                         );
                     }
                 }
-                assert!(r.date.is_some(), "Date missing for email {:?}", email_file);
+                // Some emails have dates before the cutoff year (1986)
+                let file_name = email_file.file_name().unwrap_or_default().to_string_lossy();
+                if !file_name.starts_with("next.") && !file_name.starts_with("synthetic_no-date-header") {
+                    assert!(r.date.is_some(), "Date missing for email {:?}", email_file);
+                }
+
                 assert!(
                     !r.from.is_empty(),
                     "From missing for email {:?}",

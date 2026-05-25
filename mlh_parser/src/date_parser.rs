@@ -4,6 +4,7 @@
 //! mailing list archives. Includes millennium-year correction and fallback
 //! date discovery from `Received` headers.
 
+use crate::constants;
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use regex::Regex;
 use std::sync::LazyLock;
@@ -212,11 +213,9 @@ fn last_effort_date_finder(date_text: &str) -> Option<DateTime<FixedOffset>> {
     }
 }
 
-/// Returns `true` if the date's year is before 1970 (likely malformed).
+/// Returns `true` if the date's year is before 1986 (check the constant) (likely malformed).
 pub fn is_date_too_old(date_obj: &DateTime<FixedOffset>) -> bool {
-    // the first email in history was sent in 1971
-    // https://en.wikipedia.org/wiki/History_of_email
-    date_obj.year() < 1970
+    date_obj.year() < constants::OLDEST_MAIL_DATE_CUTOFF as i32
 }
 
 /// Returns `true` if `date_obj` is more than 3 days after `now`.

@@ -1,4 +1,4 @@
-From: Stef Coene <stef.coene@docum.org>
+From: Cebolinha <cebolinha@docum.org>
 Date: Thu, 03 Jan 1980 23:11:55 +0000
 Subject: Re: [LARTC] How to get statictis
 Message-Id: <marc-lartc-102077818824677@msgid-missing>
@@ -8,20 +8,20 @@ Content-Type: text/plain; charset="us-ascii"
 Content-Transfer-Encoding: 7bit
 To: lartc@vger.kernel.org
 
-On Tuesday 07 May 2002 05:37, Leandro Stasi wrote:
+On Tuesday 07 May 2002 05:37, Cascão wrote:
 > How do you do to get stictis from classes or qdics?
 >
 > Like actual speed, borrow speed, etc.
 >
 > Beside the tc -s command that don't give you too much information.
-See http://home.docum.org/stef.coene/qos/gui/rrd.html as example.
+See http://home.docum.org/cebolinha/qos/gui/rrd.html as example.
 Or http://home.docum.org/cgi-bin/monitor.pl .
 
-Stef
+Cebolinha
 
 -- 
 
-stef.coene@docum.org
+cebolinha@docum.org
  "Using Linux as bandwidth manager"
      http://www.docum.org/
      #lartc @ irc.openprojects.net

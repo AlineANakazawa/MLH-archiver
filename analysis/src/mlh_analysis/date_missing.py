@@ -29,12 +29,12 @@ def main(dataset_dir, output_dir):
         df = pl.read_parquet(f"{dataset_dir}/list={mailing_list}/*.parquet")
         df = df.filter(
             pl.col("date").is_null()
-            & pl.col("client-date").is_not_null()
-            & (pl.col("client-date").list.len() > 0)
+            & pl.col("client_date").is_not_null()
+            & (pl.col("client_date").list.len() > 0)
         )
         df = df.with_columns(pl.lit(mailing_list).alias("list"))
-        df = df.with_columns(pl.col("client-date").list.join("||").alias("client-date"))
-        df = df.select(["list", "message-id", "subject", "date", "__file_name"])
+        df = df.with_columns(pl.col("client_date").list.join("||").alias("client_date"))
+        df = df.select(["list", "message_id", "subject", "date", "__file_name"])
 
         if not header_written:
             df.write_csv(out_path, include_header=True)

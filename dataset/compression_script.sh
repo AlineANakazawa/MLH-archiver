@@ -2,7 +2,7 @@
 
 # --- Configuration ---
 # How many subfolders to put in each archive
-CHUNK_SIZE=20
+CHUNK_SIZE=35
 # The prefix for your archive names
 ARCHIVE_PREFIX="LKML5Ws-linux-mailing-lists-columnar-dataset_anonymized"
 SOURCE_DIR="../output/anonymizer/dataset/"

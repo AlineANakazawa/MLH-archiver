@@ -327,6 +327,12 @@ Check the error log output (stderr). Common issues:
 - Unsupported character encodings
 - Corrupted email files
 
+### Future Fixes
+
+Some emails with invalid dates can be fixed by checking email references (threads or replies).
+Other, we can check the email body (when there is a timestamp).
+There are examples with "next.*" in the fixtures folder.
+
 ## License
 
 See the root [LICENSE](../LICENSE) file.

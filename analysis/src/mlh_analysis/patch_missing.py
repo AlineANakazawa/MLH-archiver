@@ -31,7 +31,7 @@ def main(dataset_dir, output_dir):
             pl.col("subject").str.starts_with("[PATCH") & pl.col("code").list.len() == 0
         )
         df = df.with_columns(pl.lit(mailing_list).alias("list"))
-        df = df.select(["list", "message-id", "subject", "__file_name"])
+        df = df.select(["list", "message_id", "subject", "__file_name"])
 
         if not header_written:
             df.write_csv(out_path, include_header=True)

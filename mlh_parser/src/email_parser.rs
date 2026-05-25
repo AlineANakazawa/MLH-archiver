@@ -106,10 +106,8 @@ fn collect_header_data(msg: &Message<'_>, email: &mut ParsedEmail, now: DateTime
 
             if let Some(val_date) = header_value_date(header.value()) {
                 date_options.push(val_date);
-            } else {
-                if let Some(dt) = date_parser::parse_date_string(&raw_date) {
-                    date_options.push(dt);
-                }
+            } else if let Some(dt) = date_parser::parse_date_string(&raw_date) {
+                date_options.push(dt);
             }
             client_dates.push(raw_date);
 
@@ -143,7 +141,7 @@ fn collect_header_data(msg: &Message<'_>, email: &mut ParsedEmail, now: DateTime
 
     // select date
     email.date = select_date(date_options, now);
-    email.client_date = client_dates.join(", ");
+    email.client_date = client_dates;
 
     if from_candidates.is_empty()
         && let Some(from) = msg.from()
@@ -182,20 +180,17 @@ fn select_best_from_header(values: &[String]) -> String {
     normalize_address(scored[0].1)
 }
 
-/// Processes the `date` and `client-date` entries in an email header map.
-///
 /// Selects the best date from the available options, applying millennium
-/// correction and `Received`-header fallback in that order. The result is
-/// stored back into `email_dict["date"]` as RFC 3339 and the raw client
-/// dates in `email_dict["client-date"]` as `||`-delimited strings.
-//TODO: this needs specific tests for it
+/// correction and filtering dates too old and in the future.
+/// When more than 2 safe dates remain, usesmedian absolute deviation
+/// to detect if dates are spread widely; if so, eliminates outliers
 pub fn select_date(
     date_options: Vec<DateTime<FixedOffset>>,
     now: DateTime<FixedOffset>,
 ) -> Option<DateTime<Utc>> {
     let date_options_len = date_options.len();
-    // Apply millennium correction and filter out future/to-old dates
-    let mut safe_options: Vec<DateTime<FixedOffset>> = date_options
+
+    let mut safe: Vec<DateTime<FixedOffset>> = date_options
         .into_iter()
         .map(|d| date_parser::fix_millennium_date(d, now))
         .filter(|d| !date_parser::check_date_issues(d, now))
@@ -204,18 +199,82 @@ pub fn select_date(
     log::debug!(
         "date selection received {} dates, and evaluated {} to be safe",
         date_options_len,
-        safe_options.len()
+        safe.len()
     );
 
-    // TODO: add a warning if the distance between dates is too large
-    // this could feed a "date_confidence" field
-
-    if !safe_options.is_empty() {
-        safe_options.sort();
-        Some(safe_options[0].into())
-    } else {
-        None
+    if safe.is_empty() {
+        return None;
     }
+
+    safe.sort();
+
+    // For 2 or fewer dates, just pick the earliest
+    if safe.len() <= 2 {
+        return Some(safe[0].into());
+    }
+
+    // With 3+ dates, check if the spread is implausibly large.
+    // If dates are within ~1 hour of each other, no filtering needed.
+    let first_ts = safe[0].timestamp_micros();
+    let last_ts = safe[safe.len() - 1].timestamp_micros();
+    let range_us = (last_ts - first_ts) as f64;
+    let one_day_us = 24.0 * 3600.0 * 1_000_000.0;
+
+    if range_us <= one_day_us {
+        log::debug!(
+            "date selection range={:.0}s, all dates close enough, picking earliest",
+            range_us / 1_000_000.0
+        );
+        return Some(safe[0].into());
+    }
+
+    // Spread is large: use median absolute deviation to find the core cluster.
+    // Dates farther than 2 days from the median are considered outliers.
+    let timestamps: Vec<i64> = safe.iter().map(|d| d.timestamp_micros()).collect();
+
+    let median = if timestamps.len() % 2 == 1 {
+        timestamps[timestamps.len() / 2] as f64
+    } else {
+        let mid = timestamps.len() / 2;
+        (timestamps[mid - 1] as f64 + timestamps[mid] as f64) / 2.0
+    };
+
+    let mut deviations: Vec<f64> = timestamps
+        .iter()
+        .map(|&ts| ((ts as f64) - median).abs())
+        .collect();
+    deviations.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let mad = if deviations.len() % 2 == 1 {
+        deviations[deviations.len() / 2]
+    } else {
+        let mid = deviations.len() / 2;
+        (deviations[mid - 1] + deviations[mid]) / 2.0
+    };
+
+    log::debug!(
+        "date selection range={:.0}s median={:.0}, using MAD outlier filter mad={}",
+        range_us / 1_000_000.0,
+        median / 1_000_000.0,
+        mad
+    );
+
+    let original_safe = safe.clone();
+    if mad > 0.0 {
+        safe.retain(|d| {
+            let ts = d.timestamp_micros() as f64;
+            let modified_z_score = (0.6745 * (ts - median).abs()) / mad;
+            modified_z_score <= 3.5 // 3.5 is the standard threshold for outlier detection
+        });
+    }
+
+    // If outlier removal was too aggressive (fewer than 2 remain),
+    // fall back to the original set.
+    if safe.len() < 2 {
+        safe = original_safe;
+    }
+
+    Some(safe[0].into())
 }
 
 #[cfg(test)]
@@ -331,16 +390,65 @@ mod tests {
 
     #[test]
     fn test_select_date_millennium_correction_applied() {
-        // Year 26 (< 50) should get +2000 -> 2026
-        // Year 98 (>= 50) should get +1900 -> 1998
         let dates = vec![
-            make_date(26, 5, 17, 10, 0, 0, 0), // becomes 2026
-            make_date(98, 5, 17, 10, 0, 0, 0), // becomes 1998 <- earlier
+            make_date(26, 5, 17, 10, 0, 0, 0),
+            make_date(98, 5, 17, 10, 0, 0, 0),
         ];
         let now = now_far_future();
         let result = select_date(dates, now);
         assert!(result.is_some());
         let expected = Utc.with_ymd_and_hms(1998, 5, 17, 10, 0, 0).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_select_date_mad_removes_outlier() {
+        // Three dates: two are clustered around 2026-05-17, one is a far outlier
+        let dates = vec![
+            make_date(2026, 5, 17, 10, 0, 0, 0), // cluster
+            make_date(2026, 5, 17, 12, 0, 0, 0), // cluster
+            make_date(2020, 1, 1, 0, 0, 0, 0),   // outlier (far)
+        ];
+        let now = now_far_future();
+        let result = select_date(dates, now);
+        assert!(result.is_some());
+        // Should pick earliest of the cluster (2026-05-17T10:00:00Z)
+        let expected = Utc.with_ymd_and_hms(2026, 5, 17, 10, 0, 0).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_select_date_mad_keeps_close_dates() {
+        // Three dates all within a few hours
+        let dates = vec![
+            make_date(2026, 5, 17, 10, 0, 0, 0),
+            make_date(2026, 5, 17, 12, 0, 0, 0),
+            make_date(2026, 5, 17, 8, 0, 0, 0),
+        ];
+        let now = now_far_future();
+        let result = select_date(dates, now);
+        assert!(result.is_some());
+        // Should pick earliest of all three: 2026-05-17T08:00:00Z
+        let expected = Utc.with_ymd_and_hms(2026, 5, 17, 8, 0, 0).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_select_date_mad_all_outliers_returns_none() {
+        // All dates are spread very far apart (>2 days cap).
+        // With the fallback, when outlier filtering removes all but <2 dates,
+        // it picks the earliest from the original set.
+        let dates = vec![
+            make_date(2020, 1, 1, 0, 0, 0, 0),
+            make_date(2021, 1, 1, 0, 0, 0, 0),
+            make_date(2022, 1, 1, 0, 0, 0, 0),
+            make_date(2023, 1, 1, 0, 0, 0, 0),
+            make_date(2024, 1, 1, 0, 0, 0, 0),
+        ];
+        let now = now_far_future();
+        let result = select_date(dates, now);
+        assert!(result.is_some());
+        let expected = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap();
         assert_eq!(result.unwrap(), expected);
     }
 }

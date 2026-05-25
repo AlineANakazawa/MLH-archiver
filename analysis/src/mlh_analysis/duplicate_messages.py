@@ -10,8 +10,8 @@ def main(dataset_dir, output_dir):
         .group_by(["message-id", "raw_body"])
         .agg(
             pl.col("date").min().alias("date"),
-            pl.col("x_mailing_list").count().alias("number_of_replicas"),
-            pl.col("x_mailing_list").alias("lists_present"),
+            pl.col("list").count().alias("number_of_replicas"),
+            pl.col("list").alias("lists_present"),
         )
         .with_columns(pl.col("lists_present").list.unique().list.sort())
         .filter(pl.col("number_of_replicas") >= 2)

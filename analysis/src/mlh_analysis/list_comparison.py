@@ -36,7 +36,7 @@ def main(working_dir, output_dir):
         if df is None:
             df = new_list_df
         else:
-            df.vstack(new_list_df)
+            df = df.vstack(new_list_df)
 
     df = df.filter(pl.col("date") > datetime(2020, 1, 1))
     df = df.sort("date")
@@ -80,7 +80,7 @@ def main(working_dir, output_dir):
                 this_list = this_email["list"][0]
                 trailers = this_email["trailers"][0]
 
-                if len(trailers) == 0:
+                if trailers is None or len(trailers) == 0:
                     continue
 
                 for signature in trailers:
@@ -102,7 +102,7 @@ def main(working_dir, output_dir):
                 this_list = this_email["list"][0]
                 trailers = this_email["trailers"][0]
 
-                if len(trailers) == 0:
+                if trailers is None or len(trailers) == 0:
                     continue
 
                 for signature in trailers:

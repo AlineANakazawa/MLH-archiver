@@ -1,4 +1,4 @@
-use arrow::array::{Array, ListArray, StringArray};
+use arrow::array::{Array, ListArray, StringArray, StructArray};
 use mlh_parser::{config::AppConfig, constants::BATCH_MAX_RECORDS, process_mailing_list, start};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use std::fs;
@@ -444,6 +444,165 @@ fn test_multiple_emails_varied_to_cc_row_count() {
     // Email 3: 2 To, 3 CC
     assert_eq!(to_lengths, vec![3, 1, 2]);
     assert_eq!(cc_lengths, vec![0, 2, 3]);
+
+    // Verify the trailers column: all three emails have empty trailers
+    let file = fs::File::open(&parquet_path).unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+    let reader = builder.build().unwrap();
+
+    let mut trailer_lengths: Vec<usize> = Vec::new();
+    for batch in reader {
+        let batch = batch.unwrap();
+        let trailers_col = batch
+            .column_by_name("trailers")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap();
+
+        for r in 0..batch.num_rows() {
+            if trailers_col.is_null(r) {
+                trailer_lengths.push(0);
+            } else {
+                let offsets = trailers_col.value_offsets();
+                let start = offsets[r] as usize;
+                let end = offsets[r + 1] as usize;
+                trailer_lengths.push(end - start);
+            }
+        }
+    }
+    assert_eq!(
+        trailer_lengths,
+        vec![0, 0, 0],
+        "all emails have empty trailers"
+    );
+}
+
+/// Creates emails with mixed trailer counts: one with trailers, one
+/// without, and one with trailers again. This validates the nullable
+/// List<Struct> column handles null entries correctly across rows.
+#[test]
+fn test_trailers_nullable_mixed_counts() {
+    let temp_dir = TempDir::new().unwrap();
+    let input_base = temp_dir.path().to_path_buf();
+    let list_dir = input_base.join("trailermix");
+    fs::create_dir_all(&list_dir).unwrap();
+    let output_base = temp_dir.path().join("output");
+
+    // Email 1: has 2 trailers
+    let eml1 = concat!(
+        "From: a@test.local\r\n",
+        "To: alpha@test.local\r\n",
+        "Subject: Two Trailers\r\n",
+        "Date: Mon, 01 Jan 2025 12:00:00 +0000\r\n",
+        "Message-ID: <two-trailers@test.local>\r\n",
+        "\r\n",
+        "Body text.\r\n",
+        "\r\n",
+        "Signed-off-by: Alice <alice@example.com>\r\n",
+        "Reviewed-by: Bob <bob@example.com>\r\n"
+    );
+
+    // Email 2: has 0 trailers (null)
+    let eml2 = concat!(
+        "From: b@test.local\r\n",
+        "To: beta@test.local\r\n",
+        "Subject: No Trailers\r\n",
+        "Date: Tue, 02 Jan 2025 12:00:00 +0000\r\n",
+        "Message-ID: <no-trailers@test.local>\r\n",
+        "\r\n",
+        "Body text without trailers.\r\n"
+    );
+
+    // Email 3: has 1 trailer
+    let eml3 = concat!(
+        "From: c@test.local\r\n",
+        "To: gamma@test.local\r\n",
+        "Subject: One Trailer\r\n",
+        "Date: Wed, 03 Jan 2025 12:00:00 +0000\r\n",
+        "Message-ID: <one-trailer@test.local>\r\n",
+        "\r\n",
+        "Body text.\r\n",
+        "\r\n",
+        "Acked-by: Carol <carol@example.com>\r\n"
+    );
+
+    fs::write(list_dir.join("email_01.eml"), eml1).unwrap();
+    fs::write(list_dir.join("email_02.eml"), eml2).unwrap();
+    fs::write(list_dir.join("email_03.eml"), eml3).unwrap();
+
+    let result = process_mailing_list(
+        "trailermix",
+        &input_base,
+        &output_base,
+        false,
+        BATCH_MAX_RECORDS,
+    );
+    assert!(result.is_ok());
+
+    let parquet_path = output_base
+        .join("dataset")
+        .join("list=trailermix")
+        .join("list_data.parquet");
+    assert!(parquet_path.exists());
+
+    let file = fs::File::open(&parquet_path).unwrap();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+    let reader = builder.build().unwrap();
+
+    let mut trailer_lengths: Vec<usize> = Vec::new();
+    let mut trailer_attributions: Vec<String> = Vec::new();
+    for batch in reader {
+        let batch = batch.unwrap();
+        let trailers_col = batch
+            .column_by_name("trailers")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ListArray>()
+            .unwrap();
+
+        for r in 0..batch.num_rows() {
+            if trailers_col.is_null(r) {
+                trailer_lengths.push(0);
+            } else {
+                let offsets = trailers_col.value_offsets();
+                let start = offsets[r] as usize;
+                let end = offsets[r + 1] as usize;
+                let len = end - start;
+                trailer_lengths.push(len);
+
+                let struct_arr = trailers_col
+                    .values()
+                    .as_any()
+                    .downcast_ref::<StructArray>()
+                    .unwrap();
+                let attr_col = struct_arr
+                    .column_by_name("attribution")
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                for i in start..end {
+                    trailer_attributions.push(attr_col.value(i).to_string());
+                }
+            }
+        }
+    }
+
+    assert_eq!(
+        trailer_lengths,
+        vec![2, 0, 1],
+        "trailer lengths: 2, null, 1"
+    );
+    assert_eq!(
+        trailer_attributions,
+        vec![
+            "Signed-off-by".to_string(),
+            "Reviewed-by".to_string(),
+            "Acked-by".to_string(),
+        ],
+        "trailer attributions in order"
+    );
 }
 
 /// Verifies that a display name containing a comma inside quotes

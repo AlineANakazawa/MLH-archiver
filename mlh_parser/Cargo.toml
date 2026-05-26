@@ -35,6 +35,7 @@ dateparser = "0.3.1"
 #parquet
 arrow = { version="58.3"}
 parquet = { version="58.3" }
+sha1 = "0.11.0"
 
 
 [dev-dependencies]

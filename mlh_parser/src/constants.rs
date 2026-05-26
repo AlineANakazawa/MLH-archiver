@@ -31,7 +31,7 @@ pub const OLDEST_MAIL_DATE_CUTOFF: usize = 1986;
 /// The fixed Arrow schema used for all Parquet output.
 ///
 /// Column order: `from, to, cc, subject, date, client-date, message-id,
-/// in-reply-to, references, x-mailing-list, trailers, code, raw_body, __file_name`.
+/// in-reply-to, references, x-mailing-list, trailers, code, raw_body, _source_reference`.
 pub static PARQUET_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
     let trailer_fields = Fields::from(vec![
         Field::new("attribution", DataType::Utf8, false),
@@ -76,7 +76,7 @@ pub static PARQUET_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
                 DataType::Struct(trailer_fields),
                 true,
             ))),
-            false, // not nullable
+            true,
         ),
         Field::new(
             "code",
@@ -84,7 +84,8 @@ pub static PARQUET_SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
             true,
         ),
         Field::new("raw_body", DataType::Utf8, true),
-        Field::new("__file_name", DataType::Utf8, true),
+        Field::new("body_sha1", DataType::Utf8, true),
+        Field::new("_source_reference", DataType::Utf8, true),
     ])
 });
 

@@ -34,7 +34,7 @@ def main(dataset_dir, output_dir):
         )
         df = df.with_columns(pl.lit(mailing_list).alias("list"))
         df = df.with_columns(pl.col("client_date").list.join("||").alias("client_date"))
-        df = df.select(["list", "message_id", "subject", "date", "__file_name"])
+        df = df.select(["list", "message_id", "subject", "date", "_source_reference"])
 
         if not header_written:
             df.write_csv(out_path, include_header=True)

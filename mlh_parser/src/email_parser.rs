@@ -1,6 +1,8 @@
 //! Top-level email parsing: decodes raw bytes into a [`ParsedEmail`].
 
 use crate::ParsedEmail;
+use crate::address_parser::normalize_address;
+use crate::address_parser::normalize_raw_address_header;
 use crate::address_parser::{AddressScore, addr_to_string, score_email_address};
 use crate::date_parser;
 use crate::email_reader::{
@@ -9,11 +11,10 @@ use crate::email_reader::{
 use crate::errors::ParseError;
 use crate::extractors::{self};
 
-use crate::address_parser::normalize_address;
-use crate::address_parser::normalize_raw_address_header;
 use chrono::{DateTime, FixedOffset, Utc};
 use mail_parser::Message;
 use parquet::errors::Result;
+use sha1::{Digest, Sha1};
 
 /// Parses a raw RFC 822 email byte slice into a [`ParsedEmail`].
 ///
@@ -34,8 +35,8 @@ pub fn parse_email(
 
     email.trailers = extractors::extract_attributions(&raw_body);
     email.code = extractors::extract_patches(&raw_body);
+    email.body_sha1 = generate_sha1_hash(&raw_body);
     email.raw_body = raw_body;
-
     Ok(email)
 }
 
@@ -275,6 +276,14 @@ pub fn select_date(
     }
 
     Some(safe[0].into())
+}
+
+/// Compute the SHA-1 hex digest of a string.
+pub fn generate_sha1_hash(input: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(input.as_bytes());
+    let digest = hasher.finalize();
+    digest.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 #[cfg(test)]

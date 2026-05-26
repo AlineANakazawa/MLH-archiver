@@ -59,7 +59,7 @@ pub fn flush_batch(
     Ok(())
 }
 
-/// Builds an Arrow [`RecordBatch`] from a slice of `(ParsedEmail, file_name)` pairs.
+/// Builds an Arrow [`RecordBatch`] from a slice of `(ParsedEmail, source_reference)` pairs.
 ///
 /// Uses the fixed schema defined in [`PARQUET_SCHEMA`](crate::constants::PARQUET_SCHEMA).
 /// Each parsed email becomes one row; list-valued columns (to, cc, references,
@@ -95,9 +95,10 @@ pub fn build_record_batch(
 
     let mut code_arr = ListBuilder::new(StringBuilder::new());
     let mut raw_body_arr = StringBuilder::new();
-    let mut file_name_arr = StringBuilder::new();
+    let mut body_sha1_arr = StringBuilder::new();
+    let mut source_reference_arr = StringBuilder::new();
 
-    for (idx, (email, file_name)) in emails.iter().enumerate() {
+    for (idx, (email, source_reference)) in emails.iter().enumerate() {
         // from
         {
             from_arr.append_value(&email.from);
@@ -198,9 +199,11 @@ pub fn build_record_batch(
             code_arr.append(!email.code.is_empty());
         }
 
-        log::debug!("build_record_batch[{idx}] email_id={file_name}",);
+        log::debug!("build_record_batch[{idx}] email_id={source_reference}",);
         raw_body_arr.append_value(email.raw_body.as_str());
-        file_name_arr.append_value(file_name.as_str());
+        body_sha1_arr.append_value(email.body_sha1.as_str());
+
+        source_reference_arr.append_value(source_reference.as_str());
     }
 
     log::debug!(
@@ -225,7 +228,8 @@ pub fn build_record_batch(
             Arc::new(trailers_arr.finish()),
             Arc::new(code_arr.finish()),
             Arc::new(raw_body_arr.finish()),
-            Arc::new(file_name_arr.finish()),
+            Arc::new(body_sha1_arr.finish()),
+            Arc::new(source_reference_arr.finish()),
         ],
     )?;
 

@@ -2614,6 +2614,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_yaml",
+ "sha1",
  "tempfile",
  "testcontainers",
  "thiserror 2.0.18",

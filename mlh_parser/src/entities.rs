@@ -33,5 +33,9 @@ pub struct ParsedEmail {
     pub code: Vec<String>,
     /// Full email body text, CRLF-normalized to LF.
     pub raw_body: String,
-    pub file_name: String,
+    /// pre-calculated SHA1 sum of the raw body
+    pub body_sha1: String,
+    /// source reference is a information to trace back to the original source
+    /// it will be different for each kind of email source.
+    pub source_reference: String,
 }

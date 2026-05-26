@@ -2,9 +2,24 @@
 //! email body text.
 
 use regex::Regex;
+use std::sync::LazyLock;
 
 use crate::Attribution;
 use crate::address_parser::normalize_address;
+
+static RE_COPYPASTE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^(\S+:\s+[\da-f]+\s+\([^)]+)\n([^\n]+\))")
+        .expect("RE_COPYPASTE regex must compile")
+});
+
+static RE_WRAPPED_SIGNATURE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^(\S+:\s+[^<]+)\n(<[^>]+>)$").expect("RE_WRAPPED_SIGNATURE regex must compile")
+});
+
+static RE_SIGNATURE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?P<type>[a-zA-Z\-]+-by):\s*(?P<name>[^<\n]+?)\s*<(?P<email>[^>\n]+)>")
+        .expect("RE_SIGNATURE regex must compile")
+});
 
 /// Extracts git-style trailer lines from a commit message / email body.
 ///
@@ -17,19 +32,12 @@ pub fn extract_attributions(commit_message: &str) -> Vec<Attribution> {
     let body = commit_message.split("\n-- \n").next().unwrap_or("");
 
     // Fix common copypaste trailer wrapping
-    let re_copypaste = Regex::new(r"(?m)^(\S+:\s+[\da-f]+\s+\([^)]+)\n([^\n]+\))").unwrap();
-    let body = re_copypaste.replace_all(body, "$1 $2");
+    let body = RE_COPYPASTE.replace_all(body, "$1 $2");
 
     // Fix line broken signature: Signed-off-by: Long Name\n<email.here@example.com>
-    let re_wrapped = Regex::new(r"(?m)^(\S+:\s+[^<]+)\n(<[^>]+>)$").unwrap();
-    let body = re_wrapped.replace_all(&body, "$1 $2");
+    let body = RE_WRAPPED_SIGNATURE.replace_all(&body, "$1 $2");
 
-    let pattern = Regex::new(
-        r"(?m)^\s*(?P<type>[a-zA-Z\-]+-by):\s*(?P<name>[^<\n]+?)\s*<(?P<email>[^>\n]+)>",
-    )
-    .unwrap();
-
-    for caps in pattern.captures_iter(&body) {
+    for caps in RE_SIGNATURE.captures_iter(&body) {
         let attr_type = caps.name("type").map_or("", |m| m.as_str()).trim();
         let name = caps.name("name").map_or("", |m| m.as_str()).trim();
         let email = caps.name("email").map_or("", |m| m.as_str()).trim();
@@ -42,6 +50,9 @@ pub fn extract_attributions(commit_message: &str) -> Vec<Attribution> {
 
     attributions
 }
+
+static RE_DIFF_BLOCK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^diff --git ").expect("RE_DIFF_BLOCK must compile"));
 
 /// Extracts patch diffs from an email body.
 ///
@@ -58,12 +69,7 @@ pub fn extract_attributions(commit_message: &str) -> Vec<Attribution> {
 /// Source: https://github.com/mricon/b4/blob/main/src/b4/__init__.py
 /// Licensed under GPLv2
 pub fn extract_patches(email_body: &str) -> Vec<String> {
-    let diff_re = match regex::Regex::new(r"(?im)^diff --git ") {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
-    };
-
-    if !diff_re.is_match(email_body) {
+    if !RE_DIFF_BLOCK.is_match(email_body) {
         return Vec::new();
     }
 
@@ -80,13 +86,13 @@ pub fn extract_patches(email_body: &str) -> Vec<String> {
         starts.push(pos);
     }
 
-    if diff_re.is_match(email_body) {
+    if RE_DIFF_BLOCK.is_match(email_body) {
         let body_before_first_sep = if let Some(&first_sep) = sep_positions.first() {
             &email_body[..first_sep]
         } else {
             email_body
         };
-        if sep_positions.is_empty() || diff_re.is_match(body_before_first_sep) {
+        if sep_positions.is_empty() || RE_DIFF_BLOCK.is_match(body_before_first_sep) {
             starts.push(0);
         }
     }
@@ -105,7 +111,7 @@ pub fn extract_patches(email_body: &str) -> Vec<String> {
 
         let section = &email_body[start..end];
 
-        if diff_re.is_match(section) {
+        if RE_DIFF_BLOCK.is_match(section) {
             let patch = section.trim().to_string();
             if !patch.is_empty() {
                 patches.push(patch);

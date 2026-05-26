@@ -70,7 +70,7 @@ def main(input_map, output_dir):
 
             print(f"(Attempting to save results in {result_path})\n")
         except KeyboardInterrupt:
-            print("\Leaving.")
+            print("Leaving.")
             break
         except Exception as e:
             print(f"Error: {e}\n")

@@ -59,6 +59,7 @@ run: create-output-dir
 				-e ANALYSIS_SCRIPT="$(ANALYSIS_SCRIPT)" \
 				-e GIT_COMMIT=$${GIT_COMMIT:-unknown} \
 				-e GIT_DATE=$${GIT_DATE:-unknown} \
+				-e MPLCONFIGDIR=/tmp \
 				-v $(PARSER_OUTPUT_DIR):/data/dataset \
 				-v $(LINEAGE_OUTPUT_DIR):/data/lineage \
 				-v $(ANONYMIZER_OUTPUT_DIR):/data/anonymized \

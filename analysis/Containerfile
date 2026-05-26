@@ -11,6 +11,7 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV UV_NO_CACHE=1
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV MPLCONFIGDIR=/tmp
 
 # Change the working directory to the `app` directory
 WORKDIR /app
@@ -24,9 +25,6 @@ RUN --mount=type=bind,source=uv.lock,target=uv.lock \
 COPY pyproject.toml .
 COPY uv.lock .
 
-
 # Sync the project
 RUN uv sync --locked
 
-# Switch to non-root user matching the host (overridable at runtime via --user)
-USER $USER_ID:$GROUP_ID

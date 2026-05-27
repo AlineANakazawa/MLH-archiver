@@ -718,7 +718,7 @@ mod tests {
                     ..Default::default()
                 },
             ),
-            // discard backets if they are after the start of the message.
+            // discard brackets if they are after the start of the message.
             // In this case, the last valid tag is "1/2" inside the bracket.
             // The rest is part of the message
             (
@@ -835,11 +835,11 @@ mod tests {
                 },
             ),
             (
-                "[Intel-gfx] [PATCH] HAX sched/core: Paper over the ttwu() race [take two]",
+                "[Intel-gfx] [PATCH] HEX sched/core: Paper over the ttwu() race [take two]",
                 SubjectTags {
                     has_patch_tag: true,
                     subject_tags: vec![s("Intel-gfx"), s("PATCH")],
-                    untagged_subject: s("HAX sched/core: Paper over the ttwu() race [take two]"),
+                    untagged_subject: s("HEX sched/core: Paper over the ttwu() race [take two]"),
                     ..Default::default()
                 },
             ),

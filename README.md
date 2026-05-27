@@ -249,11 +249,6 @@ Assuming you have Python installed,
 Install the uv package manager:
 <https://docs.astral.sh/uv/getting-started/installation/>
 
-**Additional Requirements:**
-
-- `libiconv` (for the archiver's character encoding support)
-- Git
-
 #### Option 3: Dev Container
 
 This repository includes a [`.devcontainer`](.devcontainer/) configuration for VS Code or other compatible editors.

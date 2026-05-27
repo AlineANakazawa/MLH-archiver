@@ -178,7 +178,7 @@ impl TagState {
         }
     }
 
-    fn push_tag(&mut self, token: &str) {
+    fn push_tag(&mut self, token: &str, in_bracket: bool) {
         for sub in &split_glued(token) {
             let lower = sub.to_lowercase();
             if lower == "patch" {
@@ -193,7 +193,7 @@ impl TagState {
             } else if lower == "fw" || lower == "fwd" || lower == "forward" {
                 self.has_forward = true;
                 self.tags.push(sub.clone());
-            } else if let Some(caps) = RE_IS_VERSION.captures(sub) {
+            } else if in_bracket && let Some(caps) = RE_IS_VERSION.captures(sub) {
                 self.version = caps[1].parse::<u16>().ok();
                 self.tags.push(sub.clone());
             } else if RE_IS_SEQUENCE.is_match(sub) {
@@ -206,9 +206,93 @@ impl TagState {
     }
 }
 
+/// Parses an email subject line into [`SubjectTags`].
+///
+/// # Tag categories
+///
+/// | Category | Examples | Detection |
+/// |---|---|---|
+/// | Patch | `PATCH`, `patch` | Inside `[...]` brackets or standalone word at subject start |
+/// | RFC | `RFC`, `rfc` | Inside `[...]` brackets |
+/// | Response | `Re:`, `Res:` | Colon-prefixed at the very start of the subject |
+/// | Forward | `Fw:`, `Fwd:`, `Forward:` | Colon-prefixed at the very start of the subject |
+/// | Version | `v2`, `v3`, `v19` | **Only inside brackets**. Stored as `u16` digits (e.g. `v3` → `3`) |
+/// | Sequence | `0/3`, `1/2`, `119/124` | `N/M` pattern inside brackets |
+/// | Other | `dwarves`, `bpf-next`, `5.15.y` | Any whitespace-separated token inside brackets that doesn't match a known category |
+///
+/// # Parsing rules
+///
+/// ## Colon tags (Re, FW)
+///
+/// - Only recognised at the **very start** of the subject (before any bracket `[`).
+/// - **Chaining**: consecutive colon tags without other text in between are all collected
+///   (e.g. `"Re: Re:"` yields two `"Re"` tags). If a non-colon-tag word appears
+///   between them, the chain breaks and later colon words are ignored
+///   (e.g. `"Re: something Re:"` — the second `"Re:"` is dropped).
+/// - Non-Re/FW colon words (like `FAILED:`) are **not** treated as colon tags.
+/// - Response/Forward tags are always prepended back to the [`untagged_subject`](SubjectTags::untagged_subject).
+///
+/// ## Bracket tags (`[...]`)
+///
+/// - Bracket groups at the start of the subject contain tags. Contents are split by
+///   whitespace; each token becomes a tag.
+/// - **Glued tokens** are split: `PATCHv3` → `"PATCH"` + `"v3"`,
+///   `PATCH/RFC` → `"PATCH"` + `"RFC"`.
+/// - Tokens ending with `:` have the colon stripped. Trailing dots are trimmed
+///   (`status...` → `status`).
+/// - Brackets preceded by an alphanumeric character are discarded
+///   (e.g. `ath[59]k-devel` — `[59]` is not a tag).
+/// - **Tag zone**: only the first contiguous block of brackets (possibly chained with
+///   colon tags) is recognised. Once a non-bracket, non-colon-tag word begins the
+///   actual message body, subsequent brackets are ignored
+///   (e.g. `[PATCH 1/2] SWDEV:[Gibraltar]` — `[Gibraltar]` is discarded).
+///   If no colon tag was recognised and the first bracket does not appear at
+///   position 0, no brackets are recognised at all.
+/// - Nested brackets have their `[` and `]` characters removed before tokenising
+///   (e.g. `[Re: [Re: Linux Status]]` → tokens `Re`, `Re`, `Linux`, `Status`).
+/// - Bracket content that is entirely consumed (the whole subject is tags) produces
+///   an empty `untagged_subject`.
+///
+/// ## Standalone patch
+///
+/// - A standalone `patch`/`Patch` word at position 0 of the subject (before any
+///   bracket or quote) sets `has_patch_tag = true`.
+/// - If no brackets exist in the subject, the standalone word is added to
+///   `subject_tags` and stripped from the untagged subject.
+/// - If brackets exist, the standalone word only sets the flag; the bracket
+///   `[PATCH]` provides the actual tag.
+///
+/// ## Untagged subject
+///
+/// The `untagged_subject` is everything after the last recognised bracket, with
+/// leading `"` and `]` characters trimmed. Any Re:/FW: colon tags found at the
+/// start are then prepended back (keeping them in the subject).
+///
+/// # Examples
+///
+/// ```
+/// use mlh_parser::extractors::extract_tags_from_subject;
+///
+/// let tags = extract_tags_from_subject("[PATCH v2 0/3] libbpf: support STRUCT_OPS");
+/// assert!(tags.has_patch_tag);
+/// assert_eq!(tags.patch_version, Some(2));
+/// assert_eq!(tags.patchset_sequence_number.as_deref(), Some("0/3"));
+/// assert_eq!(tags.subject_tags, vec!["PATCH", "v2", "0/3"]);
+/// assert_eq!(tags.untagged_subject, "libbpf: support STRUCT_OPS");
+///
+/// let tags = extract_tags_from_subject("Re: [PATCH RFC bpf-next 2/6] bpf: compute");
+/// assert!(tags.has_response_tag);
+/// assert!(tags.has_patch_tag);
+/// assert!(tags.has_rfc_tag);
+/// assert_eq!(tags.subject_tags, vec!["Re", "PATCH", "RFC", "bpf-next", "2/6"]);
+/// assert_eq!(tags.untagged_subject, "Re: bpf: compute");
+/// ```
 pub fn extract_tags_from_subject(email_subject: &str) -> SubjectTags {
     let mut state = TagState::new();
     let mut tag_end: usize = 0;
+    let mut tag_zone_end: usize = 0;
+    let mut tag_zone_active = true;
+    let mut has_recognized_tag = false;
 
     let subject = email_subject.trim();
 
@@ -221,15 +305,42 @@ pub fn extract_tags_from_subject(email_subject: &str) -> SubjectTags {
     let prefix = raw_prefix.split('"').next().unwrap_or("");
     let has_brackets = first_bracket.is_some();
 
+    let mut colon_tag_last_end: usize = 0;
+
     for caps in RE_COLON_TAG.captures_iter(prefix) {
+        let m = caps.get(0).unwrap();
+        if m.start() > colon_tag_last_end {
+            let between = &prefix[colon_tag_last_end..m.start()];
+            if !between.trim().is_empty() {
+                break;
+            }
+        }
         let tag = caps.get(1).unwrap().as_str();
-        tag_end = tag_end.max(caps.get(0).unwrap().end());
-        state.push_tag(tag);
+        let lower = tag.to_lowercase();
+        let is_re = lower == "re" || lower == "res";
+        let is_fwd = lower == "fw" || lower == "fwd" || lower == "forward";
+        if !is_re && !is_fwd {
+            break;
+        }
+        has_recognized_tag = true;
+        if is_re {
+            state.has_response = true;
+        } else {
+            state.has_forward = true;
+        }
+        state.tags.push(tag.to_string());
+        colon_tag_last_end = m.end();
+        tag_zone_end = m.end();
     }
 
-    if RE_PATCH_STANDALONE.is_match(prefix) {
+    let colon_prefix = prefix[..colon_tag_last_end].to_string();
+    tag_end = tag_end.max(colon_tag_last_end);
+
+    if let Some(m) = RE_PATCH_STANDALONE.find(prefix)
+        && m.start() == 0
+    {
         state.has_patch = true;
-        if !has_brackets && let Some(m) = RE_PATCH_STANDALONE.find(prefix) {
+        if !has_brackets {
             state.tags.push(m.as_str().to_string());
             tag_end = tag_end.max(m.end());
         }
@@ -240,6 +351,22 @@ pub fn extract_tags_from_subject(email_subject: &str) -> SubjectTags {
         if start > 0 && subject.as_bytes()[start - 1].is_ascii_alphanumeric() {
             continue;
         }
+        if !tag_zone_active {
+            continue;
+        }
+        if has_recognized_tag && start > tag_zone_end {
+            let between = &subject[tag_zone_end..start];
+            if !between.trim().is_empty() {
+                continue;
+            }
+        }
+        if !has_recognized_tag {
+            if start > tag_zone_end && !subject[tag_zone_end..start].trim().is_empty() {
+                continue;
+            }
+            has_recognized_tag = true;
+        }
+        tag_zone_end = m.end();
         tag_end = tag_end.max(m.end());
         let full = m.as_str();
         let content = &full[1..full.len() - 1];
@@ -250,17 +377,25 @@ pub fn extract_tags_from_subject(email_subject: &str) -> SubjectTags {
             if token.is_empty() {
                 continue;
             }
-            state.push_tag(token);
+            state.push_tag(token, true);
+        }
+        let after = &subject[m.end()..];
+        if !after.trim_start().starts_with('[') {
+            tag_zone_active = false;
         }
     }
 
-    if !has_brackets && let Some(col_pos) = subject.find(':') {
-        tag_end = tag_end.max(col_pos + 1);
-    }
-
-    let untagged_subject = subject[tag_end..]
+    let after_tags = subject[tag_end..]
         .trim()
+        .trim_start_matches('"')
         .trim_start_matches(']')
+        .trim();
+    let comma = if colon_prefix.is_empty() || after_tags.is_empty() {
+        ""
+    } else {
+        " "
+    };
+    let untagged_subject = format!("{colon_prefix}{comma}{after_tags}")
         .trim()
         .to_string();
 
@@ -371,7 +506,7 @@ mod tests {
                     has_response_tag: true,
                     patchset_sequence_number: Some(s("2/6")),
                     subject_tags: vec![s("Re"), s("PATCH"), s("RFC"), s("bpf-next"), s("2/6")],
-                    untagged_subject: s("bpf: compute loops hierarchy"),
+                    untagged_subject: s("Re: bpf: compute loops hierarchy"),
                     ..Default::default()
                 },
             ),
@@ -424,28 +559,28 @@ mod tests {
                     has_patch_tag: true,
                     subject_tags: vec![s("Patch")],
                     untagged_subject: s(
-                        "add quirk NVME_QUIRK_IGNORE_DEV_SUBNQN for 144d:a808 (Samsung PM981/983/970 EVO Plus )\" has been added to the 7.0-stable tree",
+                        "nvme: add quirk NVME_QUIRK_IGNORE_DEV_SUBNQN for 144d:a808 (Samsung PM981/983/970 EVO Plus )\" has been added to the 7.0-stable tree",
                     ),
                     ..Default::default()
                 },
             ),
             (
+                // we should not collect the "FAILED" as a tag
                 "FAILED: patch \"[PATCH] net: skbuff: propagate shared-frag marker through\" failed to apply to 5.15-stable tree",
                 SubjectTags {
-                    has_patch_tag: true,
-                    subject_tags: vec![s("FAILED"), s("PATCH")],
                     untagged_subject: s(
-                        "net: skbuff: propagate shared-frag marker through\" failed to apply to 5.15-stable tree",
+                        "FAILED: patch \"[PATCH] net: skbuff: propagate shared-frag marker through\" failed to apply to 5.15-stable tree",
                     ),
                     ..Default::default()
                 },
             ),
+            // fwd gets re-added to the message
             (
                 "fwd: [Bug 9106] Sun Fire v100 dmfe driver bug",
                 SubjectTags {
                     has_forward_tag: true,
                     subject_tags: vec![s("fwd"), s("Bug"), s("9106")],
-                    untagged_subject: s("Sun Fire v100 dmfe driver bug"),
+                    untagged_subject: s("fwd: Sun Fire v100 dmfe driver bug"),
                     ..Default::default()
                 },
             ),
@@ -490,6 +625,7 @@ mod tests {
                     ..Default::default()
                 },
             ),
+            // way out of standards...
             (
                 "[Re: [Re: Linux Status for Sun Netra T1 200 ]]",
                 SubjectTags {
@@ -542,15 +678,110 @@ mod tests {
                     ..Default::default()
                 },
             ),
+            // discard backets if they are after the start of the message.
+            // In this case, the last valid tag is "1/2" inside the bracket.
+            // The rest is part of the message
             (
-                "[ath9k-devel] [PATCH v3] ath9k: Switch to using mac80211 intermediate software queues.",
+                "[PATCH 1/2] SWDEV-195825 drm/amd/amdgpu:[Gibraltar][V320] tdr-1 test failed after 2 rounds",
                 SubjectTags {
                     has_patch_tag: true,
-                    patch_version: Some(3),
-                    subject_tags: vec![s("ath9k-devel"), s("PATCH"), s("v3")],
+                    patchset_sequence_number: Some(s("1/2")),
+                    subject_tags: vec![s("PATCH"), s("1/2")],
                     untagged_subject: s(
-                        "ath9k: Switch to using mac80211 intermediate software queues.",
+                        "SWDEV-195825 drm/amd/amdgpu:[Gibraltar][V320] tdr-1 test failed after 2 rounds",
                     ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[PATCH 1/2] SWDEV-195825 drm/amd/amdgpu:[Gibraltar][V320] tdr-1 test failed after 2 rounds",
+                SubjectTags {
+                    has_patch_tag: true,
+                    patchset_sequence_number: Some(s("1/2")),
+                    subject_tags: vec![s("PATCH"), s("1/2")],
+                    untagged_subject: s(
+                        "SWDEV-195825 drm/amd/amdgpu:[Gibraltar][V320] tdr-1 test failed after 2 rounds",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Re: ASoC: TLV320AIC3x: Adding additional functionality for 3106 with [Patch] for discuss",
+                SubjectTags {
+                    has_response_tag: true,
+                    subject_tags: vec![s("Re")],
+                    untagged_subject: s(
+                        "Re: ASoC: TLV320AIC3x: Adding additional functionality for 3106 with [Patch] for discuss",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            // we found trolls
+            (
+                "[PATCH 3/5 V55555] PCI/ERR: get device before call device driver to avoid NULL pointer reference",
+                SubjectTags {
+                    has_patch_tag: true,
+                    patch_version: Some(55555),
+                    patchset_sequence_number: Some(s("3/5")),
+                    subject_tags: vec![s("PATCH"), s("3/5"), s("V55555")],
+                    untagged_subject: s(
+                        "PCI/ERR: get device before call device driver to avoid NULL pointer reference",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Re: [PATCH 3/5 V55555] PCI/ERR: get device before call device driver to avoid NULL pointer reference",
+                SubjectTags {
+                    has_response_tag: true,
+                    has_patch_tag: true,
+                    patch_version: Some(55555),
+                    patchset_sequence_number: Some(s("3/5")),
+                    subject_tags: vec![s("Re"), s("PATCH"), s("3/5"), s("V55555")],
+                    untagged_subject: s(
+                        "Re: PCI/ERR: get device before call device driver to avoid NULL pointer reference",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "rv8803: Implement event/tamper detection",
+                SubjectTags {
+                    untagged_subject: s("rv8803: Implement event/tamper detection"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "ARM: S5PV210: Add support SDMMC Write Protection on SMDKV210",
+                SubjectTags {
+                    untagged_subject: s(
+                        "ARM: S5PV210: Add support SDMMC Write Protection on SMDKV210",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "s5pv210: Why don't use the FIFO for Tx/Rx at MMC",
+                SubjectTags {
+                    untagged_subject: s("s5pv210: Why don't use the FIFO for Tx/Rx at MMC"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "CVE-2022-50254: media: ov8865: Fix an error handling path in ov8865_probe()",
+                SubjectTags {
+                    untagged_subject: s(
+                        "CVE-2022-50254: media: ov8865: Fix an error handling path in ov8865_probe()",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Re: tlv320aic3x: potential null dereference",
+                SubjectTags {
+                    has_response_tag: true,
+                    subject_tags: vec![s("Re")],
+                    untagged_subject: s("Re: tlv320aic3x: potential null dereference"),
                     ..Default::default()
                 },
             ),
@@ -560,6 +791,24 @@ mod tests {
                     has_rfc_tag: true,
                     subject_tags: vec![s("ath9k-devel"), s("RFC")],
                     untagged_subject: s("ath9k: add devicetree support to ath9k"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[Intel-gfx] [PATCH] HAX sched/core: Paper over the ttwu() race [take two]",
+                SubjectTags {
+                    has_patch_tag: true,
+                    subject_tags: vec![s("Intel-gfx"), s("PATCH")],
+                    untagged_subject: s("HAX sched/core: Paper over the ttwu() race [take two]"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[PATCH] drm/i915: split out intel_pch.[ch] from i915_drv.[ch]",
+                SubjectTags {
+                    has_patch_tag: true,
+                    subject_tags: vec![s("PATCH")],
+                    untagged_subject: s("drm/i915: split out intel_pch.[ch] from i915_drv.[ch]"),
                     ..Default::default()
                 },
             ),
@@ -580,7 +829,7 @@ mod tests {
                 SubjectTags {
                     has_response_tag: true,
                     subject_tags: vec![s("Re")],
-                    untagged_subject: s("Demand dial doesn't raise ISP connection"),
+                    untagged_subject: s("Re: Demand dial doesn't raise ISP connection"),
                     ..Default::default()
                 },
             ),
@@ -589,7 +838,7 @@ mod tests {
                 SubjectTags {
                     has_forward_tag: true,
                     subject_tags: vec![s("FW"), s("Lustre-discuss")],
-                    untagged_subject: s("Troubles compile lustre with --enable-quota"),
+                    untagged_subject: s("FW: Troubles compile lustre with --enable-quota"),
                     ..Default::default()
                 },
             ),
@@ -598,7 +847,7 @@ mod tests {
                 SubjectTags {
                     has_response_tag: true,
                     subject_tags: vec![s("Re")],
-                    untagged_subject: s("c++ code - not getting compiled !!!!!!!!!"),
+                    untagged_subject: s("Re: c++ code - not getting compiled !!!!!!!!!"),
                     ..Default::default()
                 },
             ),
@@ -614,6 +863,45 @@ mod tests {
                 SubjectTags {
                     untagged_subject: s(
                         "Assembler errors in optimization level 3 (-O3) - gcc (4.1.2)",
+                    ),
+                    ..Default::default()
+                },
+            ),
+            // Tag chaining
+            (
+                "Re: Re: Re: ...",
+                SubjectTags {
+                    has_response_tag: true,
+                    subject_tags: vec![s("Re"), s("Re"), s("Re")],
+                    untagged_subject: s("Re: Re: Re: ..."),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Re: Fw: Re: ...",
+                SubjectTags {
+                    has_response_tag: true,
+                    has_forward_tag: true,
+                    subject_tags: vec![s("Re"), s("Fw"), s("Re")],
+                    untagged_subject: s("Re: Fw: Re: ..."),
+                    ..Default::default()
+                },
+            ),
+            // braking the chain
+            (
+                "Re: Re: other Re: tags are ignored Re: ...",
+                SubjectTags {
+                    has_response_tag: true,
+                    subject_tags: vec![s("Re"), s("Re")],
+                    untagged_subject: s("Re: Re: other Re: tags are ignored Re: ..."),
+                    ..Default::default()
+                },
+            ),
+            (
+                "other tags aftet this are also ignored Re: [PATCH V3] Fwd: all",
+                SubjectTags {
+                    untagged_subject: s(
+                        "other tags aftet this are also ignored Re: [PATCH V3] Fwd: all",
                     ),
                     ..Default::default()
                 },

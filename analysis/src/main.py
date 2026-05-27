@@ -6,6 +6,7 @@ from mlh_analysis import patch_missing
 from mlh_analysis import author_distribution
 from mlh_analysis import date_missing
 from mlh_analysis import sql_querier
+from mlh_analysis import revisions_analysis
 
 import logging
 import os
@@ -53,6 +54,9 @@ def main():
             pick("dataset", "anon_dataset"), output_dir
         ),
         "sql_querier": lambda: sql_querier.main(inputs, output_dir),
+        "revisions_analysis": lambda: revisions_analysis.main(
+            pick("dataset", "anon_dataset"), output_dir
+        ),
     }
 
     non_default_scripts = ["list_comparison", "author_distribution", "sql_querier"]

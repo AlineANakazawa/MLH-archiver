@@ -258,3 +258,48 @@ create-example-pi:
 .PHONY: peek
 peek:
 	$(MAKE) -C scripts peek
+
+# ------------------------------------------------------------------------------
+# Dattaset manipulation targets
+# ------------------------------------------------------------------------------
+
+
+DATASET_NAME=LKML5Ws
+
+.PHONY: compress_dataset
+compress_dataset:
+	@echo "==> Checking for compressed datasets in ./dataset/..."
+	@if ls ./dataset/*.tar.gz 1>/dev/null 2>&1; then \
+		echo "  Found compressed datasets. Cleaning..."; \
+		cd ./dataset && rm -rf *.tar.gz && cd .. ;\
+	fi;
+	@cd ./dataset && bash ./compression_script.sh
+
+
+.PHONY: decompress_dataset
+decompress_dataset:
+	@echo "==> Checking for compressed datasets in ./dataset/..."
+	@if ls ./dataset/*.tar.gz 1>/dev/null 2>&1; then \
+		echo "  Found compressed datasets. Extracting..."; \
+		cd ./dataset && bash ./decompression_script.sh; \
+	else \
+		echo "  No .tar.gz files found in ./dataset/"; \
+		echo "  Please download compressed datasets to ./dataset/ and try again."; \
+		exit 1; \
+	fi
+
+
+.PHONY: move_dataset_into_default_folder
+move_dataset_into_default_folder:
+	@echo "==> The analysis script expect data to be in './output/anonymizer/dataset/'. Moving..."
+	@mkdir -p ./output/anonymizer/dataset
+	@mv ./dataset/$(DATASET_NAME)/* ./output/anonymizer/dataset/
+	@rm -rf ./dataset/$(DATASET_NAME)/*
+	@echo " Main dataset:"
+	ls ./output/anonymizer/dataset/
+	@mkdir -p ./output/parser/lineage/
+	@mkdir -p ./output/parser/dataset/
+	@mv ./dataset/$(DATASET_NAME)_lineage/* ./output/parser/
+	@echo " Data-Lineage:"
+	ls ./output/parser/lineage
+	@echo " Done!"

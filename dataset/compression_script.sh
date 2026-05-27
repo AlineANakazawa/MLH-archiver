@@ -4,7 +4,7 @@
 # How many subfolders to put in each archive
 CHUNK_SIZE=35
 # The prefix for your archive names
-ARCHIVE_PREFIX="LKML5Ws-linux-mailing-lists-columnar-dataset_anonymized"
+ARCHIVE_PREFIX="LKML5Ws-anonymized"
 SOURCE_DIR="../output/anonymizer/dataset/"
 LINEAGE_SOURCE_DIR="../output/parser/lineage/"
 # ---------------------
@@ -38,7 +38,7 @@ for ((i = 0; i < $total_folders; i += $CHUNK_SIZE)); do
 
 	# Define the archive name (e.g., archive_part_1.tar.gz)
 	part_num=$(((i / CHUNK_SIZE) + 1))
-	archive_name="${ARCHIVE_PREFIX}_${part_num}.tar.gz"
+	archive_name="${ARCHIVE_PREFIX}_${part_num}.dataset.tar.gz"
 
 	echo "---"
 	echo "Creating $archive_name..."
@@ -61,7 +61,7 @@ for ((i = 0; i < $total_folders; i += $CHUNK_SIZE)); do
 	echo "Successfully created $archive_name."
 done
 
-lineage_archive_name="data-lineage_${ARCHIVE_PREFIX}.tar.gz"
+lineage_archive_name="${ARCHIVE_PREFIX}.data-lineage.tar.gz"
 tar -C "$(dirname "$LINEAGE_SOURCE_DIR")" -cvf - lineage | gzip -9 >"$lineage_archive_name"
 
 echo "---"

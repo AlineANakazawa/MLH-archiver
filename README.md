@@ -34,7 +34,17 @@ Each component has its own detailed documentation:
 - [Analysis Documentation](analysis/README.md)
 
 ---
+## Using with a Published dataset
 
+If you are using this repository to test and analyse a built dataset:
+
+1. Download the compressed (.tar.gz) files into the [./dataset/](./dataset/) folder.
+2. Run `make decompress_dataset` to decompress the dataset
+3. Run `make move_dataset_into_default_folder` to have the files in their expected locations
+
+Now, the analysis should work as if the tool had just created the dataset.
+
+---
 ## Quick Start
 
 ### Demo Mode (self-contained)

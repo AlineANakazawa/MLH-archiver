@@ -1,0 +1,488 @@
+Return-Path: <owner-linux-mm@kvack.org>
+X-Spam-Checker-Version: SpamAssassin 3.4.0 (2014-02-07) on
+	aws-us-west-2-korg-lkml-1.web.codeaurora.org
+Received: from kanga.kvack.org (kanga.kvack.org [205.233.56.17])
+	(using TLSv1 with cipher DHE-RSA-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by smtp.lore.kernel.org (Postfix) with ESMTPS id 01E4BCA1005
+	for <linux-mm@archiver.kernel.org>; Wed,  3 Sep 2025 01:23:05 +0000 (UTC)
+Received: by kanga.kvack.org (Postfix)
+	id 57D708E0014; Tue,  2 Sep 2025 21:23:05 -0400 (EDT)
+Received: by kanga.kvack.org (Postfix, from userid 40)
+	id 52EB88E0001; Tue,  2 Sep 2025 21:23:05 -0400 (EDT)
+X-Delivered-To: int-list-linux-mm@kvack.org
+Received: by kanga.kvack.org (Postfix, from userid 63042)
+	id 3A79D8E0014; Tue,  2 Sep 2025 21:23:05 -0400 (EDT)
+X-Delivered-To: linux-mm@kvack.org
+Received: from relay.hostedemail.com (smtprelay0016.hostedemail.com [216.40.44.16])
+	by kanga.kvack.org (Postfix) with ESMTP id 21E9E8E0001
+	for <linux-mm@kvack.org>; Tue,  2 Sep 2025 21:23:05 -0400 (EDT)
+Received: from smtpin19.hostedemail.com (a10.router.float.18 [10.200.18.1])
+	by unirelay03.hostedemail.com (Postfix) with ESMTP id DC979B9918
+	for <linux-mm@kvack.org>; Wed,  3 Sep 2025 01:23:04 +0000 (UTC)
+X-FDA: 83846190288.19.FD32577
+Received: from NAM02-BN1-obe.outbound.protection.outlook.com (mail-bn1nam02on2070.outbound.protection.outlook.com [40.107.212.70])
+	by imf18.hostedemail.com (Postfix) with ESMTP id 19F5A1C0003
+	for <linux-mm@kvack.org>; Wed,  3 Sep 2025 01:23:01 +0000 (UTC)
+Authentication-Results: imf18.hostedemail.com;
+	dkim=pass header.d=Nvidia.com header.s=selector2 header.b="F/WkYn7D";
+	dmarc=pass (policy=reject) header.from=nvidia.com;
+	spf=pass (imf18.hostedemail.com: domain of monica.sousa@vila.local designates 40.107.212.70 as permitted sender) smtp.mailfrom=monica.sousa@vila.local;
+	arc=pass ("microsoft.com:s=arcselector10001:i=1")
+ARC-Seal: i=2; s=arc-20220608; d=hostedemail.com; t=1756862582; a=rsa-sha256;
+	cv=pass;
+	b=KYMO5LQV6kkMGR55f8RuoQAbFDXM70qV8NOLNkhIi2/j0vD0moHLAyUNsY3pq0XUj9rFLZ
+	vSxXX92ter+Glx2hQd4Dp76T5r9ZQQFhYikHmnrjh+gFXwfzmIk3M99VHHO6F5uRcrS8JX
+	RvwTcAiZ+gFbS9Qf4VE+fj6tAr7ItO4=
+ARC-Authentication-Results: i=2;
+	imf18.hostedemail.com;
+	dkim=pass header.d=Nvidia.com header.s=selector2 header.b="F/WkYn7D";
+	dmarc=pass (policy=reject) header.from=nvidia.com;
+	spf=pass (imf18.hostedemail.com: domain of monica.sousa@vila.local designates 40.107.212.70 as permitted sender) smtp.mailfrom=monica.sousa@vila.local;
+	arc=pass ("microsoft.com:s=arcselector10001:i=1")
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=hostedemail.com;
+	s=arc-20220608; t=1756862582;
+	h=from:from:sender:reply-to:subject:subject:date:date:
+	 message-id:message-id:to:to:cc:cc:mime-version:mime-version:
+	 content-type:content-type:
+	 content-transfer-encoding:content-transfer-encoding:
+	 in-reply-to:in-reply-to:references:references:dkim-signature;
+	bh=W7Gb8kyHDWG3YTr/2xyERL2yoR14rvhNRW78EViJ0sI=;
+	b=MotlEzRk9peQEjsrLTItkd/QH7JigGKyd67/9K70/l9QXTfSVfM+09nePvv9Qjvw7WznYm
+	c96rOTi8ia2VM3Dr/U8q2SUYkoeS5tjiR8nBaRyQraqK/tSYJzZFt9UC7Z74ha9YI2OWQF
+	8JrlL55qtrj8gOLbceQyCW2fJlkaOs4=
+ARC-Seal: i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none;
+ b=BSXJGAg/QugtURs1S4OKfM1mkPDtGxcJh2tJHm66LEy2XNt/s6rvuDHXMFStIjZL5kdQYNWcx9WmiHd4XSrF4MA3TQKFOb/Nz7tVO+9x2WDM892XdNZrQUXrfyDClhPWTh9SZujbTsI8pz50WmLb6UHrXNrfcbqxUKqTn9BYARPo97iMaT6FPPgPBtqiwIVVi+j8YjT1L3WmmIpk6e4z+EFoQ2HGmPSvmyEO2E8s5rStKTHC41jJ+f2RpQ0f5PKcPGbv+UU64bHEpX+7Cw4CkCDoV/HWukhj1lG0BASnjBWuqF5UHlYTE/ZRzWTLfS0s+GURBjAs3VF6RXFh5RZA1g==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com;
+ s=arcselector10001;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1;
+ bh=W7Gb8kyHDWG3YTr/2xyERL2yoR14rvhNRW78EViJ0sI=;
+ b=HmW/ONcsxJHwSbucijnaFpykou9AGU4TO+bOLZco6S6MfO+SdME0XI9qcGE0Bm+4GlkT2J74UUav13X26JG4H/lKFLPCLUNPCepRzypQMv4d/PuQ4UcXSwwhbFif8LTf2roqGwy7w1r4+qUxP6FczhnHt2mxVxgd9heMmwcuYTCApV7PyUK+COXc0bHh7+RQiLtKgzCje9bhqf9JPKIq9qHuxreUas646jGmoT/+kkMLoxQUoePNWkipDxTdPsp5446Pz3+8tRY3iiiP+TO3VkFiFspiwjs6A9uCM17YpjPmSt8UotpCcS/X9GTwQRrfF7DDFySugoxhVAwKQSE8XQ==
+ARC-Authentication-Results: i=1; mx.microsoft.com 1; spf=pass
+ smtp.mailfrom=nvidia.com; dmarc=pass action=none header.from=nvidia.com;
+ dkim=pass header.d=nvidia.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=Nvidia.com;
+ s=selector2;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-SenderADCheck;
+ bh=W7Gb8kyHDWG3YTr/2xyERL2yoR14rvhNRW78EViJ0sI=;
+ b=F/WkYn7Drlu/6gF2sjL3cPbrzrhqtvfOw8arEciyrpA063hPiO2HR43suseChFBSX4eNOEg+n+UGqdoEk6gCe7atJXPbFxba3h2q1ghu5deI0sjgGZloLVP1nDhrAGd2t2PuAWJ+y+h2/e3misouR1grUiB2v/jS9mHOdkLurLpPeg2PTv3+DgAIoRdmimoj7azDOZZVGUZhfV80FXJVuMRNeQ5/+iCLZNVX4e4am89HRbR4AQbVHTqZ3QXyoy+G/r6k9UlGpFkyXOetycM4A3isPMIB0uGoZxihhq5fVoIFFkCdGGRoedu31waOGHJM0fa11a+aK2sXhyJ0RnXzkQ==
+Received: from PH8PR12MB7277.namprd12.prod.outlook.com (2603:10b6:510:223::13)
+ by MW4PR12MB6708.namprd12.prod.outlook.com (2603:10b6:303:1ed::5) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9031.34; Wed, 3 Sep
+ 2025 01:20:23 +0000
+Received: from PH8PR12MB7277.namprd12.prod.outlook.com
+ ([fe80::3a4:70ea:ff05:1251]) by PH8PR12MB7277.namprd12.prod.outlook.com
+ ([fe80::3a4:70ea:ff05:1251%7]) with mapi id 15.20.9073.026; Wed, 3 Sep 2025
+ 01:20:23 +0000
+From: Mônica Sousa <monica.sousa@vila.local>
+To: linux-kernel@vger.kernel.org,
+	linux-mm@kvack.org
+Cc: damon@lists.linux.dev,
+	dri-devel@lists.freedesktop.org,
+	Mônica Sousa <monica.sousa@vila.local>,
+	Cebolinha <cebolinha@vila.local>,
+	Cascão <cascao@vila.local>,
+	Magali <magali@vila.local>,
+	Franjinha <franjinha@vila.local>,
+	Chico Bento <chico.bento@vila.local>,
+	Zé Lelé <ze.lele@vila.local>,
+	Anjinho <anjinho@vila.local>,
+	Horácio <horacio@vila.local>,
+	Penadinho <penadinho@vila.local>,
+	Tina <tina@vila.local>,
+	Piteco <piteco@vila.local>,
+	Astronauta <astronauta@vila.local>,
+	"Jotalhão" <jotalhao@vila.local>,
+	Rosinha <rosinha@vila.local>,
+	Titi <titi@vila.local>,
+	Jeremias <jeremias@vila.local>,
+	Do Contra <do.contra@vila.local>,
+	Nimbus <nimbus@vila.local>,
+	Marina <marina@vila.local>,
+	Bidu <bidu@vila.local>,
+	Dudu <dudu@vila.local>,
+	Mingau <mingau@vila.local>,
+	=?UTF-8?q?Mika=20Penttil=C3=A4?= <xaveco@vila.local>,
+	Maria Cebolinha <maria.cebolinha@vila.local>,
+	Zé da Roça <ze.da.roca@vila.local>
+Subject: [v4 14/15] selftests/mm/hmm-tests: new throughput tests including THP
+Date: Wed,  3 Sep 2025 11:18:59 +1000
+Message-ID: <20250903011900.3657435-15-monica.sousa@vila.local>
+X-Mailer: git-send-email 2.50.1
+In-Reply-To: <20250903011900.3657435-1-monica.sousa@vila.local>
+References: <20250903011900.3657435-1-monica.sousa@vila.local>
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+X-ClientProxiedBy: SY5P282CA0119.AUSP282.PROD.OUTLOOK.COM
+ (2603:10c6:10:20b::16) To PH8PR12MB7277.namprd12.prod.outlook.com
+ (2603:10b6:510:223::13)
+MIME-Version: 1.0
+X-MS-PublicTrafficType: Email
+X-MS-TrafficTypeDiagnostic: PH8PR12MB7277:EE_|MW4PR12MB6708:EE_
+X-MS-Office365-Filtering-Correlation-Id: 07f970fc-d22c-43aa-f8c5-08ddea880e51
+X-MS-Exchange-SenderADCheck: 1
+X-MS-Exchange-AntiSpam-Relay: 0
+X-Microsoft-Antispam: BCL:0;ARA:13230040|1800799024|376014|7416014|366016;
+X-Microsoft-Antispam-Message-Info:
+	=?utf-8?B?WWpKc3JEa1licmp3R092S1djUHZFY3Q0S0JJU284STJZRG14QWFLN2wyNkJk?=
+ =?utf-8?B?SkZOaDl1WDZIdDlHRTEzU1pLRUxjUmcrSXkwbmtBRVhQM2NWN1ovNmVVK2Fk?=
+ =?utf-8?B?WFM3R0VEZWRmdHhPek1UMGlCNnMwaEZZUDhCQ3k2OTlXWFBoOXV4QysvWmFQ?=
+ =?utf-8?B?Wlg1bzB2ZGp0aXNTYlZMMmppcUVVeXdCRUMwNllMeWx2MStnbTFMbUtGYWow?=
+ =?utf-8?B?bndvdWNNVVI2MzM4ek9CUDlubHRjaTVVN1ZTTUFMcWs3SHpETWUwaFZOenJG?=
+ =?utf-8?B?NkcxZnVPRVFHRlpqSUZRcHU3TXZLTks4STZLRmZYUzBzRjBGT2tIcXVTQXFI?=
+ =?utf-8?B?VzUvTUQ1NGE4WmIwRExFTjBHWE9ocTZBYjdMZVhENlNpTkxieHNnSnh4Z1Zk?=
+ =?utf-8?B?dk04QUFIRnlidklTbmZORFFvc28rdGtvU3FlK0V0MTJMSVdTUlpjdE8ybXo2?=
+ =?utf-8?B?RlVlS3FROUdlbjk2RlIzYUl2Z2lIWTY0cUZsS3BnT0dOTUdVeWdidXZ6MWg1?=
+ =?utf-8?B?UnJ4TzhyTUxTbzBUckhMSDNibkhGQXFGMHh3LzNlc3RKQ0o1aHZMM24wMWh1?=
+ =?utf-8?B?bjVKeU5XWEZLMnZWL1ZiWmJBc0dudTdXS1hjUUVrb2VrUUlncU5EbEZuUlRj?=
+ =?utf-8?B?cVRKMWZlMDlCek9nUWtSdFEzTi9YVXNoSzNhSkdEMWtNNnVPV0RaNE9hS2g0?=
+ =?utf-8?B?bHJ0YjBVN0hKdmZyTU9hUkx5OWJmVHFxNDlZRUk0T2RYYURoaUVMcEpyUG04?=
+ =?utf-8?B?T2piVTFVTHpsRHFOMDBuN1RpTEZROHF4dEdiSnNrdE80RDNCM0J0Rjdqd0RL?=
+ =?utf-8?B?bkE0YW5tMVA1Tm54UkNNc1lUUHZ3MlcwNm9OSjZ4dFBwcnR2cGlIRWdrb2hD?=
+ =?utf-8?B?cHFQUXdMc0tIOHlIajBVUEpxcnNZZ2pGSkFkYWhNaWhaWHd1MzZETGk0b2FU?=
+ =?utf-8?B?VDlvYW9iS2dhS0pHYjd3Q3dCMjl3eWQxODBROXlNWUdnMDgrenhKaW9YL3p4?=
+ =?utf-8?B?NTRaRysxaXRiWnRJd25xeDN4c2J5M09RZ1NjbzRxVDF3VksrYkZuUlF0WlZI?=
+ =?utf-8?B?UUlSbFNnZlZXeVJxaEd3MDJ5L1Vza3pBQ3JZRHNubWlCRlRoVzY4MHc0Sm1X?=
+ =?utf-8?B?ZFlRaUxhWnlDRG9JMXBwUnkrTHB0ZWJzc3lOaVBPbFI1UkJRVTZ6Q0hrR1lC?=
+ =?utf-8?B?cVJHY3pyMHBkdzJib05xd2ZDU2J2SHMyYmkyeXI0dzdlQ21yd1hJWGNFUHUz?=
+ =?utf-8?B?blVLK3VRanpxMWx6WDc0ZHN6WVRNVDhaY2NwUjR4T3RjWjIzSDJhdnhsTEc4?=
+ =?utf-8?B?R2ErR3pnNklJS3Q0N2Q1d3VlRWUzK0RXMFJ0RkYzUStEbENWZUVwV3lJTERS?=
+ =?utf-8?B?ZndDcHNmR2RQSG83dTJ5UGhtZW1VbVJlNzBVL1p2aVdLOUJXUDdJMXJmQTRu?=
+ =?utf-8?B?clNwL2RFNGhNYldRZGlHbE5WWGJ0V3cxWjJodUZIQXZBQlNnNGlaU1g3bGQ1?=
+ =?utf-8?B?c3Z4ZXBlVm9LLzd5MVgzTmIvcjBVS2xHZlM1V2Z4MFBUM3V0MTA5YXZ5Y3Bu?=
+ =?utf-8?B?TC9DN0I4ZDhpcUpTY1VoU3VURXdWU21HWFRoVitWS3JFamQzRUNMQitvNkox?=
+ =?utf-8?B?TkhPSkpKNUdXUld5dG43bXdaWUlhczhLOERhakZPR2hVc2xRT0tCRFgvbk1x?=
+ =?utf-8?B?a3FNTU5QbmZ6aHo1OFpvWkxUN3UyM3dHTklRdjZydUQ1VTFKbENmc0xkRlg5?=
+ =?utf-8?B?MmhPOE0yMlFZU1J2VjZCYWlPQXNCN1NOUUw1UTJpaUtaaGlsQzdCemM1WWZs?=
+ =?utf-8?B?ZnVmR1Z3MmVzeFpLWThPNXA4eHAzc0xKb2hySGlGUUVHOWhFOW03UzhXeDZv?=
+ =?utf-8?B?RDZoUXl6aWFMRmtVSFlyWTFiazlLTnJ3R0xvKytYWUpRbXVaUUx6bzMzS1Zn?=
+ =?utf-8?Q?fUUNKm07NbI=3D?=
+X-Forefront-Antispam-Report:
+	CIP:255.255.255.255;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:PH8PR12MB7277.namprd12.prod.outlook.com;PTR:;CAT:NONE;SFS:(13230040)(1800799024)(376014)(7416014)(366016);DIR:OUT;SFP:1101;
+X-MS-Exchange-AntiSpam-MessageData-ChunkCount: 1
+X-MS-Exchange-AntiSpam-MessageData-0:
+	=?utf-8?B?VGt5ckkrdGlJdjgvcWhWb0hIMjRsM3ZudGJKVmJHQ0orVTVLVVRET1NFdG1D?=
+ =?utf-8?B?SlVXdUR1ZitsSS8xT3B4cS9INGpETm4rZG5mYk13QWFqeW4yOTNEdS82WnpY?=
+ =?utf-8?B?U0JvczBCVkRYZDJreEZibVN6TVUvZlRpZjgzMklXRktxQmNEdTc2eGJQdWg4?=
+ =?utf-8?B?UmdWWDN2ZlZRM1hseHZHWFlGVjgycXpINWdGM3k3SWtPNUttSDVHSXhwRkV2?=
+ =?utf-8?B?dTlnZDROUmxXeG5nUlYxeGpqck9yRjVaUFpiYzRLTFNmNFYvZG9vLzVWdmxB?=
+ =?utf-8?B?TXBESElsTjNNdVFENnExdFJCY3dqYXdydGt3SXdBQWIwOWZZTmVYREM1NkpV?=
+ =?utf-8?B?MXZFVGpTdWY1K3E0T0Z5cmdHRUtkbm1wcENYaGtWQnAvcStucXBZNUpHNEcw?=
+ =?utf-8?B?eVJaTDdHL3dkT0VWWDFWOVlZNTlZL0dKMXUzVjdhdFFsTS9sMGdTY2psclUx?=
+ =?utf-8?B?RDhHUmxaRzY0T2gyYkhYQUJ2aUdqMENmeTUwR0ttVFVlOXdIL3J5Nkg3djdo?=
+ =?utf-8?B?R2tHWHFqTzU3WjRHUjYrNmFCNXNidnljZHZUZzltNWpyMld5THUzQTlLRGhY?=
+ =?utf-8?B?dGx2elorWjVDMm9iSmRBN2Q3Z0JwZ2g1UzEyd0RKUDdHdnkrUmJBYVNLMzM2?=
+ =?utf-8?B?Nnp0b1huUTV5bStJelE2TjhzZkRLZkpGTUp3eEhNTmdYNGhQRVgzN0NhVmZB?=
+ =?utf-8?B?dFoyRVFvTlh4dnRLa2NlRHE4ek9rcGwxWDlSaG54WWpkUEY1YnFtajZ0K1BN?=
+ =?utf-8?B?Z3JIK3BKczRHRWpScXVnMCtqWWhEcVZCcm5XM0UrV0NNSlZtdFlXeTc4eU5L?=
+ =?utf-8?B?S0lQVXZjbXZVeEJjTFhwOTFYaXg2aGxRckVkclA0dmVLWlRmZXdDbTdheEJz?=
+ =?utf-8?B?bWpzRjcvbjRmM2FyWkNyaXl4NTV4VFdNL0FhL2hBWE5yYzgwOGkrN3RBQnZP?=
+ =?utf-8?B?RVVZMFQ4d0FmempoK3dLTi8ySXlJUVdQMURRTFFOYVZ3VERRZFNxSkpzcjdG?=
+ =?utf-8?B?Sk5LYkJyWDN3Sll4aFBmdGtjdHlmU1lLTjJtdk85QVNwdFJWSHVnbnpwejRW?=
+ =?utf-8?B?eXBueDFkOC90YjNRcHl5ZFdJaDBuNWJuSFdKUkhOa3VkL0hMb0NHdjBNOHZY?=
+ =?utf-8?B?T2ozSFRPVm90cXA0K1BleGUyVTh3RFpSNUZ2c01KWkwxVUJ1SHpTeFFWYUtt?=
+ =?utf-8?B?VWd1UllvVHlTYVpsL0lGYzZ2QTBGVUh1UzNYRlg4V1A2cDhjRThZVjRNSXFv?=
+ =?utf-8?B?VG00Q1hVQXdiektBSE81T3pVcVJodWtSYzBuUURvOCtpS3pzQ1ZjaEl5TVRV?=
+ =?utf-8?B?eDdTcGFVbmN0NmNCd1FnZUhFaFZ3K08rdWNJd1dJMGd6SmgyODM5M1VDK2tL?=
+ =?utf-8?B?VjNSVSsvaGlWL1FISzVMSERIM2d5NElKYktZRXBiMWNRVTNRZEVJaFBsYmRl?=
+ =?utf-8?B?LzUwR3Q4UTlSbURPendyQkJ3STBDS2lVY2RIbWtrRW1IM0laK1RieTEzZlNy?=
+ =?utf-8?B?QXZLc3ExT1ZCUnFiYTk1Vm04OEtNbzlEbnhvc0pJaFEyVWxjUGkyK0ZuZVli?=
+ =?utf-8?B?dkphVVBaUjdYTjBycThtZkQwbmJLSU5pZGtVbi90eVpmOXR1L1QzMnVoZmcv?=
+ =?utf-8?B?dmtnb0l5cW9MNDR4OGtKbm9ySi9FUm14dUxGRCtqUDZJNno4VWxLbjlMVjRh?=
+ =?utf-8?B?U0R4ZndwVk42cjFYY1RrejEzd245WHM2ZVllblR1OE9Ob2JpWGR1SWNnc1J5?=
+ =?utf-8?B?dEdYaTBkejdJUGhHaEJGNmZzcmhadFdSVU5sbUxQU0JHV2lwSys1MVpQYkZC?=
+ =?utf-8?B?dTZUY3lldFgzdzNwekJMUGRmdkJ6SE83eVh4WDR6ejhsTk5ZdFNLWitIRjhT?=
+ =?utf-8?B?dVllMGU4RkdNWVZGWCttb3FiK3V4RXRoM0E4SmpPNFo3MyttTUpIOFYyZDZR?=
+ =?utf-8?B?TEtwZWNHYnRla1VMM2FIZThCUThwdThTcDNkTmlhbjRSbk9tZ290TmpHM20v?=
+ =?utf-8?B?YklEVS9tajVrSlh5RjIyWlRLUzZZelRnZVlVck9zZWhrdEF6cjdjRFd1czdv?=
+ =?utf-8?B?WitBdjg4N2UwdklXaXpNMUFleTZmVmtLT0llMEFPUXVXY1o4OXkwaVNHcG5X?=
+ =?utf-8?Q?L10iGvCJp4s76uNwcZJ/Pqcbl?=
+X-OriginatorOrg: Nvidia.com
+X-MS-Exchange-CrossTenant-Network-Message-Id: 07f970fc-d22c-43aa-f8c5-08ddea880e51
+X-MS-Exchange-CrossTenant-AuthSource: PH8PR12MB7277.namprd12.prod.outlook.com
+X-MS-Exchange-CrossTenant-AuthAs: Internal
+X-MS-Exchange-CrossTenant-OriginalArrivalTime: 03 Sep 2025 01:20:23.6088
+ (UTC)
+X-MS-Exchange-CrossTenant-FromEntityHeader: Hosted
+X-MS-Exchange-CrossTenant-Id: 43083d15-7273-40c1-b7db-39efd9ccc17a
+X-MS-Exchange-CrossTenant-MailboxType: HOSTED
+X-MS-Exchange-CrossTenant-UserPrincipalName: kpMkeB/pvepkhU6313C6Pf7P5FCinaluRSc6/tAksx+IbVVhgP/FrXgou4tOK9SnHfK5QpufN0mvIUjsr6lLWg==
+X-MS-Exchange-Transport-CrossTenantHeadersStamped: MW4PR12MB6708
+X-Rspamd-Queue-Id: 19F5A1C0003
+X-Stat-Signature: ghiebfrwmt16atb44c8pnqbjzk5gan4t
+X-Rspam-User: 
+X-Rspamd-Server: rspam06
+X-HE-Tag: 1756862581-43814
+X-HE-Meta: U2FsdGVkX1/YUL278apC5G+FTHp5+b8NfeWbqOn7f8oYFA/iwSAJqmCPSimTPVbI7w5PoOCVpb/iPMGU9YqPhDg9U5Un+J47oVLXuDGxHTBoZ1jFcAOIca152SwnqnkZK2ni9AiTpnrKdDtS6iR9UBUQ63Yt8xMFgSqFRYUR3KMghHMk/QHEJIaBMYd8szE8VOnL/n7Lm9l0rrrGs0+gRwZ6EbcUyrSKkpho/KEd6SxHsF5FMnVxNWDXYyLcr7fWjljEv0WjLbvw4WeBm1QL3RngkeMO5OIDW/A6akHHvP+f0bf+xdozPHjdONyH0F4NAhLcRLPgorRRB6qr6xA5Xnw/ymPojdEdJKE0i0AztBpqZmemQJjgwMI4RO5wO8Q17tEKqPix39e3YLHfOqxHlQPLbBH15NCjp7hMhf0/986etOoFjMfsLcfelCnvymcuhOnXzdRUNKfabY2TpQDNPo7iJDBVKE94vrQor/b7DsPh/Pz+W40rBYN4ATc6PMzj67Hek5WNxFBUjn8vvJ2xShK0qpK3R+ir29nLSjw8MZDpcliKrIs04po8FBFR5m+H/oEMeVZVA/R3/5zEEdtonR1e7svXjsOxnacv2uxvOQ0FlrAH8Apsw9Zo5lEj2/j8krJU7thnMNdoBDk+VDGzNKsO+/nLw9fgU2ZHSHii+sUEetyz4ND5Kq8sTIJ5YcqVDBUv781ehJvOMQO2KMNkHHNOWVxp4Qs+1QF2lqrpY6yj0k3vyve2vzXNYroZWRgHaAWuCnf+OKaInYCkZ+2RiLbNrJdxxq1S3zIIkNfB58gWrDft7ymDQjOQxs7hW8UojjhWUKVVj3Z8OciRY5zEI/QnzWNQsUR7xN/yUDdjjGaB6a2y/yq4b0iaGHbvPyN3I7YZeLOKD257ePQSnZ+CQu9a+uDprBXyhUoA3gJWKzmJg75anu5UK/2aXZ4LaOnJp1bZdAOLY8HwlQay6VF
+ nKHaBt4d
+ fxdS81zF/F4bmLPvkuxK1Gfhm0RkX5fJRORBOmuCMS1KfKD20Q10EzKdh9vm9qN1hn58fGTEJ0TLSdyuLNb9WVJ3nuEwAAnap5qbNfn5FlVSNZd5zzjj5CqMa424fCDiP/jfM0G3ytJPRiXPRt9To9vaej0wv7l0XmeVrW+AqZ3+SeStH1tFP3iqsBEtNAvVk/nTU0JgacRPd8L92a71Cbm7sSNDtwnVZCR9BF6BKAHlsAzm083OIEA5GDgFvMSDoFxpIkSNXM+DvcjN0kFY48+72MMJWNFqMDGiOOcVuUnxSe9PixdW0pPW4wti88ydYkMGsj2ao3CwRcq0N8pPS9/DDIULnKZKb1vfLsAcBAqvsG+eDy7gD/vSSMC1dUTGlKkmlxRUEsCqfcDQ9y/0zyO9tsq17gq32q1M3rNCmXj9LUxXQTiCGbrMw+DwdxH/zBCa150oHZIQBZ2Y3/AmH3Bn5YBCOuMuC0GPeBT488s2XfhbYCoBXeCxfN9IsDaHiz/0B5ZWCwAWjtYmlG6Zm7rEAtoHOCqoRlHdvjUgKL8aCGbOg9SjUXoGmP0hKZecd5KiPB0gJRmbeOwonf3XfoMVAPaPR7qxM+ZoiIw+YL2SBqhf6gIF9Flaha4SlJbaixk3vNt+ndAhpYsUMtcspEknorrB2hDgcrtqfyL0Bf4/cPzDs9ypb5SEpcEJdz00p3aEBR1u731o6BEZnLghYz7RekdXwML7379JonLEa0x8W/7JkFRkZs5GANo7Z4YlS5chf49F9VZJvtzPq7PTyo0dDLGi5YNLN2AGscpguWCgl65xfknX2IJVq0s4LqeGfJ8HrJAHzkNL00jcJSOS/zVSk1dlCCxJjBVgIVbhy3tB5em8KPoThsETfFQkFYKXge/GcFIgxOC4VBtVRYww5sQm0C/EL0P9CmZFV3GzoWjR23Uggoh3Vf8aO2+2TdIm0YkXGy4sspOshhBtbJ0trG52DHvIt
+ hVQNqaDj
+ kZGQmqhswDHWYSBCsrez5tiUhYLAbDELpoi91NS/Pkl1Hx0YaDDfi/ybOI0M4r75qPXvlvt2xMwNFXiv+xTO4bSyxeWqsr77rpFHkjHT7X4=
+X-Bogosity: Ham, tests=bogofilter, spamicity=0.000000, version=1.2.4
+Sender: owner-linux-mm@kvack.org
+Precedence: bulk
+X-Loop: owner-majordomo@kvack.org
+List-ID: <linux-mm.kvack.org>
+List-Subscribe: <mailto:majordomo@kvack.org>
+List-Unsubscribe: <mailto:majordomo@kvack.org>
+
+Add new benchmark style support to test transfer bandwidth for
+zone device memory operations.
+
+Cc: Cebolinha <cebolinha@vila.local>
+Cc: Cascão <cascao@vila.local>
+Cc: Magali <magali@vila.local>
+Cc: Franjinha <franjinha@vila.local>
+Cc: Chico Bento <chico.bento@vila.local>
+Cc: Zé Lelé <ze.lele@vila.local>
+Cc: Anjinho <anjinho@vila.local>
+Cc: Horácio <horacio@vila.local>
+Cc: Penadinho <penadinho@vila.local>
+Cc: Tina <tina@vila.local>
+Cc: Piteco <piteco@vila.local>
+Cc: Astronauta <astronauta@vila.local>
+Cc: "Jotalhão" <jotalhao@vila.local>
+Cc: Rosinha <rosinha@vila.local>
+Cc: Titi <titi@vila.local>
+Cc: Jeremias <jeremias@vila.local>
+Cc: Do Contra <do.contra@vila.local>
+Cc: Nimbus <nimbus@vila.local>
+Cc: Marina <marina@vila.local>
+Cc: Bidu <bidu@vila.local>
+Cc: Dudu <dudu@vila.local>
+Cc: Mingau <mingau@vila.local>
+Cc: Xaveco <xaveco@vila.local>
+Cc: Maria Cebolinha <maria.cebolinha@vila.local>
+Cc: Zé da Roça <ze.da.roca@vila.local>
+
+Signed-off-by: Mônica Sousa <monica.sousa@vila.local>
+---
+ tools/testing/selftests/mm/hmm-tests.c | 197 ++++++++++++++++++++++++-
+ 1 file changed, 196 insertions(+), 1 deletion(-)
+
+diff --git a/tools/testing/selftests/mm/hmm-tests.c b/tools/testing/selftests/mm/hmm-tests.c
+index 0e6873ba5845..96d3b994a93d 100644
+--- a/tools/testing/selftests/mm/hmm-tests.c
++++ b/tools/testing/selftests/mm/hmm-tests.c
+@@ -25,6 +25,7 @@
+ #include <sys/stat.h>
+ #include <sys/mman.h>
+ #include <sys/ioctl.h>
++#include <sys/time.h>
+ 
+ 
+ /*
+@@ -209,8 +210,10 @@ static void hmm_buffer_free(struct hmm_buffer *buffer)
+ 	if (buffer == NULL)
+ 		return;
+ 
+-	if (buffer->ptr)
++	if (buffer->ptr) {
+ 		munmap(buffer->ptr, buffer->size);
++		buffer->ptr = NULL;
++	}
+ 	free(buffer->mirror);
+ 	free(buffer);
+ }
+@@ -2658,4 +2661,196 @@ TEST_F(hmm, migrate_anon_huge_zero_err)
+ 	buffer->ptr = old_ptr;
+ 	hmm_buffer_free(buffer);
+ }
++
++struct benchmark_results {
++	double sys_to_dev_time;
++	double dev_to_sys_time;
++	double throughput_s2d;
++	double throughput_d2s;
++};
++
++static double get_time_ms(void)
++{
++	struct timeval tv;
++
++	gettimeofday(&tv, NULL);
++	return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
++}
++
++static inline struct hmm_buffer *hmm_buffer_alloc(unsigned long size)
++{
++	struct hmm_buffer *buffer;
++
++	buffer = malloc(sizeof(*buffer));
++
++	buffer->fd = -1;
++	buffer->size = size;
++	buffer->mirror = malloc(size);
++	memset(buffer->mirror, 0xFF, size);
++	return buffer;
++}
++
++static void print_benchmark_results(const char *test_name, size_t buffer_size,
++				     struct benchmark_results *thp,
++				     struct benchmark_results *regular)
++{
++	double s2d_improvement = ((regular->sys_to_dev_time - thp->sys_to_dev_time) /
++				 regular->sys_to_dev_time) * 100.0;
++	double d2s_improvement = ((regular->dev_to_sys_time - thp->dev_to_sys_time) /
++				 regular->dev_to_sys_time) * 100.0;
++	double throughput_s2d_improvement = ((thp->throughput_s2d - regular->throughput_s2d) /
++					    regular->throughput_s2d) * 100.0;
++	double throughput_d2s_improvement = ((thp->throughput_d2s - regular->throughput_d2s) /
++					    regular->throughput_d2s) * 100.0;
++
++	printf("\n=== %s (%.1f MB) ===\n", test_name, buffer_size / (1024.0 * 1024.0));
++	printf("                     | With THP        | Without THP     | Improvement\n");
++	printf("---------------------------------------------------------------------\n");
++	printf("Sys->Dev Migration   | %.3f ms        | %.3f ms        | %.1f%%\n",
++	       thp->sys_to_dev_time, regular->sys_to_dev_time, s2d_improvement);
++	printf("Dev->Sys Migration   | %.3f ms        | %.3f ms        | %.1f%%\n",
++	       thp->dev_to_sys_time, regular->dev_to_sys_time, d2s_improvement);
++	printf("S->D Throughput      | %.2f GB/s      | %.2f GB/s      | %.1f%%\n",
++	       thp->throughput_s2d, regular->throughput_s2d, throughput_s2d_improvement);
++	printf("D->S Throughput      | %.2f GB/s      | %.2f GB/s      | %.1f%%\n",
++	       thp->throughput_d2s, regular->throughput_d2s, throughput_d2s_improvement);
++}
++
++/*
++ * Run a single migration benchmark
++ * fd: file descriptor for hmm device
++ * use_thp: whether to use THP
++ * buffer_size: size of buffer to allocate
++ * iterations: number of iterations
++ * results: where to store results
++ */
++static inline int run_migration_benchmark(int fd, int use_thp, size_t buffer_size,
++					   int iterations, struct benchmark_results *results)
++{
++	struct hmm_buffer *buffer;
++	unsigned long npages = buffer_size / sysconf(_SC_PAGESIZE);
++	double start, end;
++	double s2d_total = 0, d2s_total = 0;
++	int ret, i;
++	int *ptr;
++
++	buffer = hmm_buffer_alloc(buffer_size);
++
++	/* Map memory */
++	buffer->ptr = mmap(NULL, buffer_size, PROT_READ | PROT_WRITE,
++			  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++
++	if (!buffer->ptr)
++		return -1;
++
++	/* Apply THP hint if requested */
++	if (use_thp)
++		ret = madvise(buffer->ptr, buffer_size, MADV_HUGEPAGE);
++	else
++		ret = madvise(buffer->ptr, buffer_size, MADV_NOHUGEPAGE);
++
++	if (ret)
++		return ret;
++
++	/* Initialize memory to make sure pages are allocated */
++	ptr = (int *)buffer->ptr;
++	for (i = 0; i < buffer_size / sizeof(int); i++)
++		ptr[i] = i & 0xFF;
++
++	/* Warmup iteration */
++	ret = hmm_migrate_sys_to_dev(fd, buffer, npages);
++	if (ret)
++		return ret;
++
++	ret = hmm_migrate_dev_to_sys(fd, buffer, npages);
++	if (ret)
++		return ret;
++
++	/* Benchmark iterations */
++	for (i = 0; i < iterations; i++) {
++		/* System to device migration */
++		start = get_time_ms();
++
++		ret = hmm_migrate_sys_to_dev(fd, buffer, npages);
++		if (ret)
++			return ret;
++
++		end = get_time_ms();
++		s2d_total += (end - start);
++
++		/* Device to system migration */
++		start = get_time_ms();
++
++		ret = hmm_migrate_dev_to_sys(fd, buffer, npages);
++		if (ret)
++			return ret;
++
++		end = get_time_ms();
++		d2s_total += (end - start);
++	}
++
++	/* Calculate average times and throughput */
++	results->sys_to_dev_time = s2d_total / iterations;
++	results->dev_to_sys_time = d2s_total / iterations;
++	results->throughput_s2d = (buffer_size / (1024.0 * 1024.0 * 1024.0)) /
++				 (results->sys_to_dev_time / 1000.0);
++	results->throughput_d2s = (buffer_size / (1024.0 * 1024.0 * 1024.0)) /
++				 (results->dev_to_sys_time / 1000.0);
++
++	/* Cleanup */
++	hmm_buffer_free(buffer);
++	return 0;
++}
++
++/*
++ * Benchmark THP migration with different buffer sizes
++ */
++TEST_F_TIMEOUT(hmm, benchmark_thp_migration, 120)
++{
++	struct benchmark_results thp_results, regular_results;
++	size_t thp_size = 2 * 1024 * 1024; /* 2MB - typical THP size */
++	int iterations = 5;
++
++	printf("\nHMM THP Migration Benchmark\n");
++	printf("---------------------------\n");
++	printf("System page size: %ld bytes\n", sysconf(_SC_PAGESIZE));
++
++	/* Test different buffer sizes */
++	size_t test_sizes[] = {
++		thp_size / 4,      /* 512KB - smaller than THP */
++		thp_size / 2,      /* 1MB - half THP */
++		thp_size,          /* 2MB - single THP */
++		thp_size * 2,      /* 4MB - two THPs */
++		thp_size * 4,      /* 8MB - four THPs */
++		thp_size * 8,       /* 16MB - eight THPs */
++		thp_size * 128,       /* 256MB - one twenty eight THPs */
++	};
++
++	static const char *const test_names[] = {
++		"Small Buffer (512KB)",
++		"Half THP Size (1MB)",
++		"Single THP Size (2MB)",
++		"Two THP Size (4MB)",
++		"Four THP Size (8MB)",
++		"Eight THP Size (16MB)",
++		"One twenty eight THP Size (256MB)"
++	};
++
++	int num_tests = ARRAY_SIZE(test_sizes);
++
++	/* Run all tests */
++	for (int i = 0; i < num_tests; i++) {
++		/* Test with THP */
++		ASSERT_EQ(run_migration_benchmark(self->fd, 1, test_sizes[i],
++					iterations, &thp_results), 0);
++
++		/* Test without THP */
++		ASSERT_EQ(run_migration_benchmark(self->fd, 0, test_sizes[i],
++					iterations, &regular_results), 0);
++
++		/* Print results */
++		print_benchmark_results(test_names[i], test_sizes[i],
++					&thp_results, &regular_results);
++	}
++}
+ TEST_HARNESS_MAIN
+-- 
+2.50.1
+
+

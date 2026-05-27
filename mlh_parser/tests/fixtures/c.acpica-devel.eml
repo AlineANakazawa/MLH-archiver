@@ -1,0 +1,123 @@
+Received: from mail-pj1-f50.google.com (mail-pj1-f50.google.com [209.85.216.50])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES128-GCM-SHA256 (128/128 bits))
+	(No client certificate requested)
+	by smtp.subspace.kernel.org (Postfix) with ESMTPS id DA54C3321D6
+	for <acpica-devel@lists.linux.dev>; Wed, 29 Oct 2025 11:27:24 +0000 (UTC)
+Authentication-Results: smtp.subspace.kernel.org; arc=none smtp.client-ip=209.85.216.50
+ARC-Seal:i=1; a=rsa-sha256; d=subspace.kernel.org; s=arc-20240116;
+	t=1761737246; cv=none; b=eLyzYJDUcdPsLENFbKvLF9sokRvR7sdw9cw420u8aChOXVE+d48GVOIANA/ALN4KqcLLWWziwfIXdJ7EWGy+QMYR/koMbgJjDRXb1rFb3/GIB0QXo6Vf+/qzyAmp8dzbfRnbWZwEKQXbkp6zSNaH73StKuSnvHV87sgAfm290Wg=
+ARC-Message-Signature:i=1; a=rsa-sha256; d=subspace.kernel.org;
+	s=arc-20240116; t=1761737246; c=relaxed/simple;
+	bh=fk1jo/sIeI52ZoZ8R5y44DiLeZbX3mH6843B2DjcmcE=;
+	h=From:To:Cc:Subject:Date:Message-ID:In-Reply-To:References:
+	 MIME-Version; b=GmYxhcIrVeQ+zUYDUC67GSelUWe9+EuwVkiVV7yCcYGgWeqBHIuZkUhZFNUiY9ieKMAQDhOKiUQgtRF3va/hr/EV/SkWLOs7bgjScnJzBo6H6HtKJan5PK8qQJ2Hiz/bisTvUtPylfNHY1gzmcTeVqoRyElZ1+z/phMmhq+7PMY=
+ARC-Authentication-Results:i=1; smtp.subspace.kernel.org; dmarc=none (p=none dis=none) header.from=ventanamicro.com; spf=pass smtp.mailfrom=ventanamicro.com; dkim=pass (2048-bit key) header.d=ventanamicro.com header.i=@ventanamicro.com header.b=orZF2xJU; arc=none smtp.client-ip=209.85.216.50
+Authentication-Results: smtp.subspace.kernel.org; dmarc=none (p=none dis=none) header.from=ventanamicro.com
+Authentication-Results: smtp.subspace.kernel.org; spf=pass smtp.mailfrom=ventanamicro.com
+Authentication-Results: smtp.subspace.kernel.org;
+	dkim=pass (2048-bit key) header.d=ventanamicro.com header.i=@ventanamicro.com header.b="orZF2xJU"
+Received: by mail-pj1-f50.google.com with SMTP id 98e67ed59e1d1-340299fe579so2386672a91.2
+        for <acpica-devel@lists.linux.dev>; Wed, 29 Oct 2025 04:27:24 -0700 (PDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=ventanamicro.com; s=google; t=1761737244; x=1762342044; darn=lists.linux.dev;
+        h=content-transfer-encoding:mime-version:references:in-reply-to
+         :message-id:date:subject:cc:to:from:from:to:cc:subject:date
+         :message-id:reply-to;
+        bh=eVrGZiCOO3VoWU6as4Ya4YNojK7gFL/5DgKPuB9HXfo=;
+        b=orZF2xJU6AS8A07xYuIdMdC/bshfHlUl/0KuR3FD8uwGP3fv3cGj0bGSWIUQM13dN3
+         laeM8p84/mvQtx1ld9PRF81cJS9VkRN5iB1reBaaj0xadvTIbMJWSG36Hh1aPFXcJtfx
+         2pS4qApNLh5qQJwmFDfPoFWHnnOE8FLa8ylYD6BgcHxacnNy+I5DY2o6VKTMyxfiCS2b
+         LHblgd1IwBHOfRm1OFkc9NPnFy/hxnH2A0h44ZTh6vv7uAG3AwQaxuwotacoo4rIIYQ6
+         n+U+CkmyKK5pzA0JLQwkp8LiD3O/4KV+aY26pjYM/HUPp6AuEZJx4+cDi5N2219CaWmb
+         Al9w==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1761737244; x=1762342044;
+        h=content-transfer-encoding:mime-version:references:in-reply-to
+         :message-id:date:subject:cc:to:from:x-gm-message-state:from:to:cc
+         :subject:date:message-id:reply-to;
+        bh=eVrGZiCOO3VoWU6as4Ya4YNojK7gFL/5DgKPuB9HXfo=;
+        b=G+yGQtIjQsUlOAfugF/HTr0j7e49oObMlASOyyFZeu1XdVTcN9mPmxGQfaOsRm7c0B
+         oIvoiGK4RwNk1MdsQAzbXogtnK7ZaZxhm7C3uUkDtMLpBOAf9/nEE62HxVKkfpKqix8s
+         HlBS248G+GL7hZG8khy4X3EMZGVKx9EJe1l0ADwlR4Cs7v633tQKa+R1USh7vgkzNwEl
+         MK5QyrYz7oJLbk/HBpE2EPWT+Gi+D64xVotsna4/dquOybW5xu2w1CFg7MKslb1FIc9a
+         BqH3I0XV0fNv+q5ewv9qe2JTD4bwh4K08RWchYD6bOuZFE9nd4JwJpjUhZJHCKCgiDLF
+         e1XA==
+X-Forwarded-Encrypted: i=1; AJvYcCUOSBYuwf4ak/4xQw8y3P/Zd2fYhcQlYGCMOArxK9voMWHCHEzhzH7FezuqKANI63alavarKVhG93E1tAY=@lists.linux.dev
+X-Gm-Message-State: AOJu0YxdYxbhZJv1wfbVChAQAd+IOzZi2PLf6B61TEyrfEQcWEytxAo3
+	bxtwhISdS65tfmuReFhEcc5hpIzyvyZQ8RfYDDghvk8QZwEI1j3pjqMdzF44nQNT9xk=
+X-Gm-Gg: ASbGncvM7jQuOxU5fNt4b94HUfUbUNlldX8mZM054tpTZXhKGaJ+3yRE9FuDF37uQzA
+	Jl0pAZYD+shrXldWZJ9gUBiY2/5lsSOVwNwVUZRWKT5AegWpt1CbawX6g6UvF774yuL6clKMYg7
+	cGiTDLoc1jExDAIPRd0UOA9OWu1ILjZPdVc5oM50e7zjRruMk0XXK+/MbaxAXmHFrBOXUTeCtTv
+	ZkIUhNy1QePmzjiI308Y5LxouEppzJz+x9Su2a1KCAwMvFCiNUO3xLvPv+dgXyOq/PfoFcCL3yS
+	+Xdvzje6H2Ty48FlIcT+2kioyXlRwfnlphp8gKyC7ItRjOIIyV98gXSGYvTRT0GYkAtnVGiYNzm
+	fOpUl5fIwiA5mdSCzDzYOdM6/YNI3JbwZWNcVpP9/zWNDxj1yt+L+cpVWf4A/K3itGVu+uQi6t6
+	lsUQ68my0VYFDDFHPDBVQhR/RqsHdQ
+X-Google-Smtp-Source: AGHT+IEs0ZClHYQ32GXBT6VvX4hdE/vTZzW0dkqblsfwRDrg9bIgaJQ8u6BnX6Q+OdRAzRPJ5EziSQ==
+X-Received: by 2002:a17:90b:4d0b:b0:33d:a0fd:257b with SMTP id 98e67ed59e1d1-3403a2fe511mr2861483a91.36.1761737243889;
+        Wed, 29 Oct 2025 04:27:23 -0700 (PDT)
+Received: from ventana-desktop.localhost ([2405:201:d019:c0ce:f7f5:7789:48e5:c03f])
+        by smtp.gmail.com with ESMTPSA id 98e67ed59e1d1-33fed7f6040sm15316918a91.16.2025.10.29.04.27.19
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Wed, 29 Oct 2025 04:27:23 -0700 (PDT)
+From: Mônica Sousa <monica.sousa@vila.local>
+To: linux-riscv@lists.infradead.org,
+	linux-kernel@vger.kernel.org,
+	linux-acpi@vger.kernel.org,
+	linux-efi@vger.kernel.org,
+	acpica-devel@lists.linux.dev
+Cc: cebolinha@vila.local,
+	cascao@vila.local,
+	magali@vila.local,
+	franjinha@vila.local,
+	chico.bento@vila.local,
+	ze.lele@vila.local,
+	anjinho@vila.local,
+	horacio@vila.local,
+	penadinho@vila.local,
+	tina@vila.local,
+	piteco@vila.local,
+	Mônica Sousa <monica.sousa@vila.local>
+Subject: [RFC PATCH v2 04/10] riscv: Add fixmap indices for GHES IRQ and SSE contexts
+Date: Wed, 29 Oct 2025 16:56:42 +0530
+Message-ID: <20251029112649.3811657-5-monica.sousa@vila.local>
+X-Mailer: git-send-email 2.43.0
+In-Reply-To: <20251029112649.3811657-1-monica.sousa@vila.local>
+References: <20251029112649.3811657-1-monica.sousa@vila.local>
+Precedence: bulk
+X-Mailing-List: acpica-devel@lists.linux.dev
+List-Id: <acpica-devel.lists.linux.dev>
+List-Subscribe: <mailto:acpica-devel+subscribe@lists.linux.dev>
+List-Unsubscribe: <mailto:acpica-devel+unsubscribe@lists.linux.dev>
+MIME-Version: 1.0
+Content-Transfer-Encoding: 8bit
+
+GHES error handling requires fixmap entries for IRQ notifications.
+Add fixmap indices for IRQ, SSE Low and High priority notifications.
+
+Signed-off-by: Mônica Sousa <monica.sousa@vila.local>
+---
+ arch/riscv/include/asm/fixmap.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/riscv/include/asm/fixmap.h b/arch/riscv/include/asm/fixmap.h
+index 0a55099bb734..e874fd952286 100644
+--- a/arch/riscv/include/asm/fixmap.h
++++ b/arch/riscv/include/asm/fixmap.h
+@@ -38,6 +38,14 @@ enum fixed_addresses {
+ 	FIX_TEXT_POKE0,
+ 	FIX_EARLYCON_MEM_BASE,
+ 
++#ifdef CONFIG_ACPI_APEI_GHES
++	/* Used for GHES mapping from assorted contexts */
++	FIX_APEI_GHES_IRQ,
++#ifdef CONFIG_RISCV_SBI_SSE
++	FIX_APEI_GHES_SSE_LOW_PRIORITY,
++	FIX_APEI_GHES_SSE_HIGH_PRIORITY,
++#endif /* CONFIG_RISCV_SBI_SSE */
++#endif /* CONFIG_ACPI_APEI_GHES */
+ 	__end_of_permanent_fixed_addresses,
+ 	/*
+ 	 * Temporary boot-time mappings, used by early_ioremap(),
+-- 
+2.43.0
+

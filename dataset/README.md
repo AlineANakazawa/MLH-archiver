@@ -46,8 +46,8 @@ Schema definition of the Columnar dataset:
 | trailers                 | List of Structs    | Signature block attribution and identification                                                   |
 | code                     | List of Strings    | Code snippets extracted from email                                                               |
 | raw_body                 | String             | Complete raw email body                                                                          |
-| body_sha1                | String             | Sha1 hashsum of the raw body (befor anonymization)                                               |
-| _source_reference        | String             | Provenance tracking: source back reference (e.g., nntp sequencial id, `{epoch}-{commit_hash}` for PI) |
+| body_sha1                | String             | Sha1 hashsum of the raw body (before anonymization)                                               |
+| _source_reference        | String             | Provenance tracking: source back reference (e.g., nntp sequential id, `{epoch}-{commit_hash}` for PI) |
 | list                     | String (partition) | The list from where the message was collected, split into a folder partition (hive style)        |
 ```
 

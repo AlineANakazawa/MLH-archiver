@@ -144,7 +144,17 @@ static RE_IS_VERSION: LazyLock<Regex> =
 static RE_IS_SEQUENCE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\d+/\d+$").expect("re_is_sequence regex must compile"));
 
+/// Splits compound tokens like `PATCHv3` or `PATCH/RFC` into their known
+/// sub-parts using [`RE_GLUED_PARTS`].
+///
+/// Only tokens whose lowercase form starts with `patch` or `rfc` are considered
+/// for splitting.  All other tokens are returned unchanged, preventing false
+/// version extraction from tokens like `ov511` or `adv7511`.
 fn split_glued(token: &str) -> Vec<String> {
+    let lower = token.to_lowercase();
+    if !lower.starts_with("patch") && !lower.starts_with("rfc") {
+        return vec![token.to_string()];
+    }
     let parts: Vec<String> = RE_GLUED_PARTS
         .find_iter(token)
         .map(|m| m.as_str().to_string())
@@ -207,6 +217,13 @@ impl TagState {
     }
 }
 
+/// Extracts chained `Re:` / `Fw:` / `Fwd:` / `Forward:` colon tags from the
+/// portion of the subject *before* the first `[` bracket character.
+///
+/// Returns `(colon_prefix, tag_end)` where `colon_prefix` is the slice of the
+/// prefix that contains the recognised colon tags (used later to reconstruct
+/// the untagged subject) and `tag_end` is the byte offset of the last colon
+/// tag end within the prefix.
 fn process_colon_tags(prefix: &str, state: &mut TagState) -> (String, usize) {
     let mut tag_end = 0;
     for caps in RE_COLON_TAG.captures_iter(prefix) {
@@ -263,8 +280,10 @@ fn process_colon_tags(prefix: &str, state: &mut TagState) -> (String, usize) {
 ///
 /// - Bracket groups at the start of the subject contain tags. Contents are split by
 ///   whitespace; each token becomes a tag.
-/// - **Glued tokens** are split: `PATCHv3` → `"PATCH"` + `"v3"`,
-///   `PATCH/RFC` → `"PATCH"` + `"RFC"`.
+/// - **Glued tokens** whose text starts with `patch` or `rfc` (case-insensitive)
+///   are split into known sub-tokens: `PATCHv3` → `"PATCH"` + `"v3"`,
+///   `PATCH/RFC` → `"PATCH"` + `"RFC"`.  Tokens not starting with these prefixes
+///   (e.g. `ov511`, `adv7511`) are never split, avoiding false version extraction.
 /// - Tokens ending with `:` have the colon stripped. Trailing dots are trimmed
 ///   (`status...` → `status`).
 /// - Brackets preceded by an alphanumeric character are discarded
@@ -599,6 +618,40 @@ mod tests {
                     has_patch_tag: true,
                     subject_tags: vec![s("2.4"), s("PATCH")],
                     untagged_subject: s("sparc64 dma parenthesis fixes"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Re: [adv7511] Adding audio to transmitter driver",
+                SubjectTags {
+                    has_response_tag: true,
+                    subject_tags: vec![s("Re"), s("adv7511")],
+                    untagged_subject: s("Re: Adding audio to transmitter driver"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[PATCH] [ov511] Export snapshot button through input layer",
+                SubjectTags {
+                    has_patch_tag: true,
+                    subject_tags: vec![s("PATCH"), s("ov511")],
+                    untagged_subject: s("Export snapshot button through input layer"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[Bug 27729] [r300g - RV530] main/mipmap.c:144: do_row: Assertion `comps >= 1' failed ",
+                SubjectTags {
+                    subject_tags: vec![s("Bug"), s("27729"), s("r300g"), s("-"), s("RV530")],
+                    untagged_subject: s("main/mipmap.c:144: do_row: Assertion `comps >= 1' failed"),
+                    ..Default::default()
+                },
+            ),
+            (
+                "[Bug 33011] [RADEON:KMS:RV530M:MUX] HDMI-A-1 Does not work after resume (But claims it does)",
+                SubjectTags {
+                    subject_tags: vec![s("Bug"), s("33011"), s("RADEON:KMS:RV530M:MUX")],
+                    untagged_subject: s("HDMI-A-1 Does not work after resume (But claims it does)"),
                     ..Default::default()
                 },
             ),

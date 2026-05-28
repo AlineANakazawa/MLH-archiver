@@ -1,0 +1,30 @@
+"""duplicate_messages.py"""
+
+import os
+import polars as pl
+
+def main(dataset_dir, output_dir):
+    df = pl.scan_parquet(f"{dataset_dir}/**/*.parquet", hive_partitioning=True)
+
+    df = (
+        df.rename({"list": "list"})
+        .group_by(["message_id", "raw_body"])
+        .agg(
+            pl.col("date").min().alias("date"),
+            pl.col("list").count().alias("number_of_replicas"),
+            pl.col("list").alias("lists_present"),
+        )
+        .with_columns(pl.col("lists_present").list.unique().list.sort())
+        .filter(pl.col("number_of_replicas") >= 2)
+        .rename({"message_id": "message_id"})
+        .sort(["number_of_replicas", "date"], descending=[True, False])
+        .collect()
+    )
+
+    dataset_out = os.path.join(output_dir, "dataset")
+    os.makedirs(dataset_out, exist_ok=True)
+
+    df.write_parquet(os.path.join(dataset_out, "duplicate_messages.parquet"))
+    df.with_columns(pl.col("lists_present").list.join(", ")).write_csv(
+        os.path.join(output_dir, "duplicate_messages.csv")
+    )

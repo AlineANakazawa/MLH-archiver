@@ -54,9 +54,9 @@ fn lineage_schema() -> Arc<Schema> {
         Field::new("list_name", DataType::Utf8, true),
         Field::new("source_type", DataType::Utf8, true),
         Field::new("write_mode", DataType::Utf8, true),
-        Field::new("archive_timestamp", DataType::Date64, true),
+        Field::new("archiver_timestamp", DataType::Date64, true),
         Field::new("archiver_build_info", DataType::Utf8, true),
-        Field::new("parse_timestamp", DataType::Date64, true),
+        Field::new("parser_timestamp", DataType::Date64, true),
         Field::new("parser_build_info", DataType::Utf8, true),
     ]))
 }
@@ -88,7 +88,7 @@ fn build_lineage_batch(
 
         // this failure should not happen, but try to parse from the RFC3339 expected from Archiver
         let archiver_timestamp = entry
-            .get("archive_timestamp")
+            .get("archiver_timestamp")
             .map(|s| match chrono::DateTime::parse_from_rfc3339(s) {
                 Ok(d) => Some(d.timestamp()),
                 Err(_) => None,

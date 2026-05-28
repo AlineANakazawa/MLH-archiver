@@ -17,7 +17,7 @@ fn test_parse_lineage_single_entry() {
         "list_name: \"test.list\"\n",
         "source_type: \"NNTP h=localhost\"\n",
         "write_mode: \"append\"\n",
-        "archive_timestamp: \"2025-01-15T10:30:00Z\"\n",
+        "archiver_timestamp: \"2025-01-15T10:30:00Z\"\n",
         "archiver_build_info: \"Archiver v=0.1.0 commit=abc123\"\n",
     );
     fs::write(list_dir.join("__lineage.yaml"), lineage_yaml).unwrap();
@@ -60,8 +60,8 @@ fn test_parse_lineage_single_entry() {
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
-        let archive_timestamp = batch
-            .column_by_name("archive_timestamp")
+        let archiver_timestamp = batch
+            .column_by_name("archiver_timestamp")
             .unwrap()
             .as_any()
             .downcast_ref::<Date64Array>()
@@ -72,8 +72,8 @@ fn test_parse_lineage_single_entry() {
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
-        let parse_timestamp = batch
-            .column_by_name("parse_timestamp")
+        let parser_timestamp = batch
+            .column_by_name("parser_timestamp")
             .unwrap()
             .as_any()
             .downcast_ref::<Date64Array>()
@@ -89,12 +89,12 @@ fn test_parse_lineage_single_entry() {
         assert_eq!(list_name.value(0), "test.list");
         assert_eq!(source_type.value(0), "NNTP h=localhost");
         assert_eq!(write_mode.value(0), "append");
-        assert_eq!(archive_timestamp.value(0), 1736937000);
+        assert_eq!(archiver_timestamp.value(0), 1736937000);
         assert_eq!(
             archiver_build_info.value(0),
             "Archiver v=0.1.0 commit=abc123"
         );
-        assert!(parse_timestamp.value(0) > 0);
+        assert!(parser_timestamp.value(0) > 0);
         assert!(!parser_build_info.value(0).is_empty());
     }
 
@@ -114,21 +114,21 @@ fn test_parse_lineage_multiple_entries() {
         "list_name: \"multi.list\"\n",
         "source_type: \"NNTP\"\n",
         "write_mode: \"append\"\n",
-        "archive_timestamp: \"2025-01-15T10:30:00Z\"\n",
+        "archiver_timestamp: \"2025-01-15T10:30:00Z\"\n",
         "archiver_build_info: \"Archiver v=0.1.0\"\n",
         "---\n",
         "email_index: \"2\"\n",
         "list_name: \"multi.list\"\n",
         "source_type: \"NNTP\"\n",
         "write_mode: \"append\"\n",
-        "archive_timestamp: \"2025-01-15T10:30:05Z\"\n",
+        "archiver_timestamp: \"2025-01-15T10:30:05Z\"\n",
         "archiver_build_info: \"Archiver v=0.1.0\"\n",
         "---\n",
         "email_index: \"3\"\n",
         "list_name: \"multi.list\"\n",
         "source_type: \"NNTP\"\n",
         "write_mode: \"append\"\n",
-        "archive_timestamp: \"2025-01-15T10:30:10Z\"\n",
+        "archiver_timestamp: \"2025-01-15T10:30:10Z\"\n",
         "archiver_build_info: \"Archiver v=0.1.0\"\n",
     );
     fs::write(list_dir.join("__lineage.yaml"), lineage_yaml).unwrap();
@@ -151,8 +151,8 @@ fn test_parse_lineage_multiple_entries() {
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
-        let archive_timestamp = batch
-            .column_by_name("archive_timestamp")
+        let archiver_timestamp = batch
+            .column_by_name("archiver_timestamp")
             .unwrap()
             .as_any()
             .downcast_ref::<Date64Array>()
@@ -161,9 +161,9 @@ fn test_parse_lineage_multiple_entries() {
         assert_eq!(email_index.value(0), "1");
         assert_eq!(email_index.value(1), "2");
         assert_eq!(email_index.value(2), "3");
-        assert_eq!(archive_timestamp.value(0), 1736937000);
-        assert_eq!(archive_timestamp.value(1), 1736937005);
-        assert_eq!(archive_timestamp.value(2), 1736937010);
+        assert_eq!(archiver_timestamp.value(0), 1736937000);
+        assert_eq!(archiver_timestamp.value(1), 1736937005);
+        assert_eq!(archiver_timestamp.value(2), 1736937010);
     }
 
     assert_eq!(row_count, 3);
@@ -186,7 +186,7 @@ fn test_parse_lineage_multiple_lists() {
             "list_name: \"list.one\"\n",
             "source_type: \"NNTP\"\n",
             "write_mode: \"append\"\n",
-            "archive_timestamp: \"2025-01-15T10:30:00Z\"\n",
+            "archiver_timestamp: \"2025-01-15T10:30:00Z\"\n",
             "archiver_build_info: \"A v=1\"\n",
         ),
     )
@@ -198,7 +198,7 @@ fn test_parse_lineage_multiple_lists() {
             "list_name: \"list.two\"\n",
             "source_type: \"IMAP\"\n",
             "write_mode: \"overwrite\"\n",
-            "archive_timestamp: \"2025-01-15T10:30:05Z\"\n",
+            "archiver_timestamp: \"2025-01-15T10:30:05Z\"\n",
             "archiver_build_info: \"A v=2\"\n",
         ),
     )
@@ -248,7 +248,7 @@ fn test_parse_lineage_static_columns_same_value() {
              list_name: \"s.list\"\n\
              source_type: \"SRC\"\n\
              write_mode: \"append\"\n\
-             archive_timestamp: \"2025-01-15T10:30:00Z\"\n\
+             archiver_timestamp: \"2025-01-15T10:30:00Z\"\n\
              archiver_build_info: \"B ld=1\"\n",
             i
         ));
@@ -327,7 +327,7 @@ fn test_parse_lineage_no_subdirectories() {
 }
 
 #[test]
-fn test_parse_lineage_parse_timestamp_consistent_type() {
+fn test_parse_lineage_parser_timestamp_consistent_type() {
     let input_dir = TempDir::new().unwrap();
     let output_dir = TempDir::new().unwrap();
 
@@ -339,7 +339,7 @@ fn test_parse_lineage_parse_timestamp_consistent_type() {
         "list_name: \"ts.list\"\n",
         "source_type: \"SRC\"\n",
         "write_mode: \"append\"\n",
-        "archive_timestamp: \"2025-01-15T10:30:00Z\"\n",
+        "archiver_timestamp: \"2025-01-15T10:30:00Z\"\n",
         "archiver_build_info: \"A v=1\"\n",
     );
     fs::write(list_dir.join("__lineage.yaml"), lineage_yaml).unwrap();
@@ -354,13 +354,13 @@ fn test_parse_lineage_parse_timestamp_consistent_type() {
     for batch in reader {
         let batch = batch.unwrap();
         let parse_ts = batch
-            .column_by_name("parse_timestamp")
+            .column_by_name("parser_timestamp")
             .unwrap()
             .as_any()
             .downcast_ref::<Date64Array>()
             .unwrap();
         let archive_ts = batch
-            .column_by_name("archive_timestamp")
+            .column_by_name("archiver_timestamp")
             .unwrap()
             .as_any()
             .downcast_ref::<Date64Array>()

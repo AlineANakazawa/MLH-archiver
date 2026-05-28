@@ -64,7 +64,7 @@ pub struct DataLineageRecord {
     pub write_mode: String,
     /// UTC date when the read was performed
     /// encoded using RFC3339
-    pub archive_timestamp: String,
+    pub archiver_timestamp: String,
     /// build information about the archiver software
     pub archiver_build_info: String,
 }
@@ -76,7 +76,7 @@ impl From<DataLineageRecord> for HashMap<String, String> {
         m.insert("list_name".to_string(), r.list_name);
         m.insert("source_type".to_string(), r.source_type);
         m.insert("write_mode".to_string(), r.write_mode);
-        m.insert("archive_timestamp".to_string(), r.archive_timestamp);
+        m.insert("archiver_timestamp".to_string(), r.archiver_timestamp);
         m.insert("archiver_build_info".to_string(), r.archiver_build_info);
         m
     }
@@ -126,7 +126,7 @@ impl DataLineageWriter {
                 source_type: self.run_mode.clone(),
                 archiver_build_info: (*self.build_info).to_string(),
                 write_mode: self.write_mode.to_string(),
-                archive_timestamp: Utc::now().to_rfc3339(),
+                archiver_timestamp: Utc::now().to_rfc3339(),
             },
         )
         .map_err(crate::errors::Error::Io)

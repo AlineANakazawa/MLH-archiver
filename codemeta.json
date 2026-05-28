@@ -24,6 +24,17 @@
 			"familyName": "Pilone",
 			"givenName": "Arthur"
 		},
+        {
+			"id": "https://orcid.org/0009-0002-4422-181X",
+			"type": "Person",
+			"affiliation": {
+				"type": "Organization",
+				"name": "University of São Paulo"
+			},
+			"email": "laura.arakaki@ime.usp.br",
+			"familyName": "Arakaki",
+			"givenName": "Laura"
+		},
 		{
 			"id": "https://orcid.org/0009-0000-4639-1578",
 			"type": "Person",
@@ -57,7 +68,7 @@
 		"Free Software maintainers"
 	],
 	"license": "https://spdx.org/licenses/GPL-3.0",
-	"name": "Mailing Lists Heritage",
+	"name": "MailingListsHeritage",
 	"operatingSystem": "Linux",
 	"programmingLanguage": "Rust, Python",
 	"version": "1",

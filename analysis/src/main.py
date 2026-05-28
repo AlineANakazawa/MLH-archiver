@@ -7,6 +7,7 @@ from mlh_analysis import author_distribution
 from mlh_analysis import date_missing
 from mlh_analysis import sql_querier
 from mlh_analysis import revisions_analysis
+from mlh_analysis import duplicate_messages
 
 import logging
 import os
@@ -50,6 +51,9 @@ def main():
         "list_comparison": lambda: list_comparison.main(
             pick("dataset", "anon_dataset"), output_dir
         ),
+        "duplicate_messages": lambda: duplicate_messages.main(
+            pick("dataset", "anon_dataset"), output_dir
+        ),
         "author_distribution": lambda: author_distribution.main(
             pick("dataset", "anon_dataset"), output_dir
         ),
@@ -59,7 +63,7 @@ def main():
         ),
     }
 
-    non_default_scripts = ["list_comparison", "author_distribution", "sql_querier", "revisions_analysis"]
+    non_default_scripts = ["list_comparison", "author_distribution", "sql_querier", "revisions_analysis", "duplicate_messages"]
 
     if analysis_script:
         if analysis_script in scripts.keys():

@@ -2,6 +2,7 @@
 
 use crate::ParsedEmail;
 use crate::address_parser::normalize_address;
+use crate::address_parser::normalize_address_list;
 use crate::address_parser::normalize_raw_address_header;
 use crate::address_parser::{AddressScore, addr_to_string, score_email_address};
 use crate::date_parser;
@@ -145,6 +146,18 @@ fn collect_header_data(msg: &Message<'_>, email: &mut ParsedEmail, now: DateTime
     // select date
     email.date = select_date(date_options, now);
     email.client_date = client_dates;
+
+    if email.cc.is_empty()
+        && let Some(cc) = msg.cc()
+    {
+        email.cc = normalize_address_list(cc);
+    }
+
+    if email.to.is_empty()
+        && let Some(to) = msg.to()
+    {
+        email.to = normalize_address_list(to);
+    }
 
     if from_candidates.is_empty()
         && let Some(from) = msg.from()

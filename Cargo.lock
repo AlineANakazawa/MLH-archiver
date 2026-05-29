@@ -898,6 +898,7 @@ dependencies = [
  "inquire",
  "log",
  "mlh_archiver",
+ "nntp",
 ]
 
 [[package]]

@@ -27,9 +27,11 @@ use clap::Parser;
 use glob::Pattern;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use mlh_archiver::nntp_source::{
-    connect_to_nntp_server, nntp_utils::server_address, retrieve_lists_with_connection,
+    connect_to_nntp_server, nntp_utils::server_address, retrieve_groups_info_with_connection,
+    retrieve_lists_with_connection,
 };
 use mlh_archiver::range_inputs::parse_sequence;
+use nntp::NNTPStream;
 use std::env;
 
 /// Parsed server configuration from a URL.
@@ -178,20 +180,25 @@ fn main() -> mlh_archiver::Result<()> {
     let tls_label = if server.use_tls { " (TLS)" } else { "" };
     log::info!("Connecting to NNTP server: {}{}", server_url, tls_label);
 
-    // Connect and retrieve list of groups
-    println!(
-        "🔍 Fetching available mailing lists from {}{}...",
-        server_url, tls_label
-    );
-    let groups = match retrieve_lists_with_connection(
+    // Connect to NNTP server and retrieve list of groups
+    println!("🔍 Connecting to {}{}...", server_url, tls_label);
+    let mut nntp_stream = match connect_to_nntp_server(
         &server.hostname,
         server.port,
         args.username.clone(),
         args.password.clone(),
     ) {
-        Ok(g) => g,
+        Ok(stream) => stream,
         Err(e) => {
             eprintln!("❌ Failed to connect to NNTP server: {}", e);
+            return Err(e);
+        }
+    };
+
+    let groups = match retrieve_lists_with_connection(&mut nntp_stream) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("❌ Failed to fetch mailing lists: {}", e);
             return Err(e);
         }
     };
@@ -204,7 +211,12 @@ fn main() -> mlh_archiver::Result<()> {
     }
 
     if let Some(ref list_pattern) = args.list {
-        return batch_mode(&server, &args, &groups, list_pattern);
+        let id = args.id.as_deref().unwrap_or_else(|| {
+            eprintln!("❌ --id is required when using --list");
+            eprintln!("   Examples: --id 42, --id 1-10, --id '1..10', --id '1,3,5-7'");
+            std::process::exit(1);
+        });
+        return batch_mode(&mut nntp_stream, &groups, list_pattern, id);
     }
 
     // Interactive selection + fetch loop
@@ -231,19 +243,14 @@ fn main() -> mlh_archiver::Result<()> {
         };
 
         println!("📊 Fetching email ranges...");
-        let groups_info = match mlh_archiver::nntp_source::retrieve_groups_info(
-            &server.hostname,
-            server.port,
-            &groups_to_preview,
-            args.username.clone(),
-            args.password.clone(),
-        ) {
-            Ok(info) => info,
-            Err(e) => {
-                eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
-                Vec::new()
-            }
-        };
+        let groups_info =
+            match retrieve_groups_info_with_connection(&mut nntp_stream, &groups_to_preview) {
+                Ok(info) => info,
+                Err(e) => {
+                    eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
+                    Vec::new()
+                }
+            };
 
         println!("\n📈 Article Range Preview:");
         println!("─────────────────────────────────────────────────────────────");
@@ -263,12 +270,11 @@ fn main() -> mlh_archiver::Result<()> {
             continue;
         }
 
-        let input = Text::new(
-            "Fetch emails? (number/range, Enter=latest, n=back to lists, q=quit)",
-        )
-        .with_help_message("Examples: 42, 1-10, 1..10, 1,3,5-7")
-        .prompt()
-        .unwrap_or_else(|_| std::process::exit(0));
+        let input =
+            Text::new("Fetch emails? (number/range, Enter=latest, n=back to lists, q=quit)")
+                .with_help_message("Examples: 42, 1-10, 1..10, 1,3,5-7")
+                .prompt()
+                .unwrap_or_else(|_| std::process::exit(0));
 
         let input = input.trim();
         match input {
@@ -278,8 +284,7 @@ fn main() -> mlh_archiver::Result<()> {
             }
             "n" | "N" => continue,
             "" => {
-                let list_options: Vec<&String> =
-                    groups_info.iter().map(|(name, _)| name).collect();
+                let list_options: Vec<&String> = groups_info.iter().map(|(name, _)| name).collect();
                 if let Ok(selection) =
                     Select::new("Select a list to fetch latest article:", list_options).prompt()
                 {
@@ -288,13 +293,7 @@ fn main() -> mlh_archiver::Result<()> {
                     {
                         if group_info.high >= group_info.low {
                             let latest = vec![group_info.high as usize];
-                            fetch_and_display_articles(
-                                &server,
-                                &args.username,
-                                &args.password,
-                                selection,
-                                &latest,
-                            );
+                            fetch_and_display_articles(&mut nntp_stream, selection, &latest);
                         } else {
                             println!("⚠️  Group appears to be empty (low > high)");
                         }
@@ -320,13 +319,7 @@ fn main() -> mlh_archiver::Result<()> {
                                 break;
                             }
                         }
-                        fetch_and_display_articles(
-                            &server,
-                            &args.username,
-                            &args.password,
-                            group_name,
-                            &ids,
-                        );
+                        fetch_and_display_articles(&mut nntp_stream, group_name, &ids);
                     }
                 }
                 None => {
@@ -339,20 +332,11 @@ fn main() -> mlh_archiver::Result<()> {
 
 /// Run batch mode: filter groups by glob pattern, fetch articles by id range.
 fn batch_mode(
-    server: &ServerConfig,
-    args: &Args,
+    stream: &mut NNTPStream,
     groups: &[String],
     list_pattern: &str,
+    id: &str,
 ) -> mlh_archiver::Result<()> {
-    let ids_str = match &args.id {
-        Some(ids) => ids,
-        None => {
-            eprintln!("❌ --id is required when using --list");
-            eprintln!("   Examples: --id 42, --id 1-10, --id '1..10', --id '1,3,5-7'");
-            std::process::exit(1);
-        }
-    };
-
     let matching = filter_by_glob(groups, list_pattern);
     let count = matching.len();
 
@@ -362,7 +346,7 @@ fn batch_mode(
         return Ok(());
     }
 
-    let ids = parse_id_range(ids_str);
+    let ids = parse_id_range(id);
 
     for (i, group_name) in matching.iter().enumerate() {
         if i > 0 {
@@ -382,7 +366,7 @@ fn batch_mode(
             }
         }
 
-        fetch_and_display_articles(server, &args.username, &args.password, group_name, &ids);
+        fetch_and_display_articles(stream, group_name, &ids);
     }
 
     println!("\n✨ Done!");
@@ -436,26 +420,7 @@ fn try_parse_id_range(input: &str) -> Option<Vec<usize>> {
     }
 }
 
-fn fetch_and_display_articles(
-    server: &ServerConfig,
-    username: &Option<String>,
-    password: &Option<String>,
-    group_name: &str,
-    ids: &[usize],
-) {
-    let mut stream = match connect_to_nntp_server(
-        &server.hostname,
-        server.port,
-        username.clone(),
-        password.clone(),
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("⚠️  Failed to connect for '{}': {}", group_name, e);
-            return;
-        }
-    };
-
+fn fetch_and_display_articles(stream: &mut NNTPStream, group_name: &str, ids: &[usize]) {
     match stream.group(group_name) {
         Ok(info) => {
             println!(
@@ -503,8 +468,6 @@ fn fetch_and_display_articles(
             }
         }
     }
-
-    let _ = stream.quit();
 }
 
 /// Prompt user for NNTP server URL

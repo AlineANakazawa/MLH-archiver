@@ -91,7 +91,8 @@ pub fn start(
                 if let Some(RunModeConfig::NNTP(nntp_config)) = app_config.get_run_mode_config(mode)
                 {
                     // Get available lists in endpoint
-                    let groups = nntp_source::nntp_lister::retrieve_lists(nntp_config.clone())?;
+                    let groups =
+                        nntp_source::nntp_lister::retrieve_nntp_lists(nntp_config.clone())?;
                     // Filter with selected lists by user
                     let groups = app_config.get_read_lists(groups, mode)?;
 

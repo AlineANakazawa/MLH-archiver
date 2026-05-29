@@ -7,7 +7,7 @@
 //!
 //! - [`connect_to_nntp_server`] - Establish connection to NNTP server
 //! - [`get_group_info`] - Retrieve group information (email range)
-//! - [`retrieve_lists_with_connection`] - Get all available groups
+//! - [`retrieve_lists`] - Get all available groups
 
 use crate::errors;
 use nntp::NNTPStream;
@@ -136,28 +136,24 @@ pub fn get_group_info(
 /// # Example
 ///
 /// ```rust,no_run
-/// use mlh_archiver::nntp_source::nntp_utils::retrieve_lists_with_connection;
+/// use mlh_archiver::nntp_source::nntp_utils::retrieve_lists;
 ///
-/// let groups = retrieve_lists_with_connection("nntp://nntp.example.com", Some(119), None, None)?;
+/// let groups = retrieve_lists("nntp://nntp.example.com", Some(119), None, None)?;
 /// println!("Available groups: {}", groups.len());
 /// # Ok::<(), mlh_archiver::errors::Error>(())
 /// ```
 #[cfg_attr(feature = "otel", tracing::instrument(skip(password)))]
-pub fn retrieve_lists_with_connection(
+pub fn retrieve_lists(
     hostname: &str,
     port: Option<u16>,
     username: Option<String>,
     password: Option<String>,
 ) -> errors::Result<Vec<String>> {
     let mut nntp_stream = connect_to_nntp_server(hostname, port, username, password)?;
-
-    let list_options = nntp_stream.list()?;
-    let groups = list_options.iter().map(|g| g.name.clone()).collect();
-
+    let groups = retrieve_lists_with_connection(&mut nntp_stream);
     // Clean shutdown
     let _ = nntp_stream.quit();
-
-    Ok(groups)
+    groups
 }
 
 /// Retrieves group information for multiple groups in a single call.
@@ -184,10 +180,35 @@ pub fn retrieve_groups_info(
     password: Option<String>,
 ) -> errors::Result<Vec<(String, nntp::NewsGroup)>> {
     let mut nntp_stream = connect_to_nntp_server(hostname, port, username, password)?;
+    let results = retrieve_groups_info_with_connection(&mut nntp_stream, groups);
+    // Clean shutdown
+    let _ = nntp_stream.quit();
+    results
+}
 
+/// Retrieves all available newsgroups using an existing connection.
+///
+/// Unlike [`retrieve_lists`], this function does not open or close a connection.
+/// It uses the provided stream, which must already be connected.
+#[cfg_attr(feature = "otel", tracing::instrument(skip(nntp_stream)))]
+pub fn retrieve_lists_with_connection(nntp_stream: &mut NNTPStream) -> errors::Result<Vec<String>> {
+    let list_options = nntp_stream.list()?;
+    let groups = list_options.iter().map(|g| g.name.clone()).collect();
+    Ok(groups)
+}
+
+/// Retrieves group information for multiple groups using an existing connection.
+///
+/// Unlike [`retrieve_groups_info`], this function does not open or close a connection.
+/// It uses the provided stream, which must already be connected.
+#[cfg_attr(feature = "otel", tracing::instrument(skip(nntp_stream)))]
+pub fn retrieve_groups_info_with_connection(
+    nntp_stream: &mut NNTPStream,
+    groups: &[String],
+) -> errors::Result<Vec<(String, nntp::NewsGroup)>> {
     let mut results = Vec::with_capacity(groups.len());
     for group_name in groups {
-        match get_group_info(&mut nntp_stream, group_name) {
+        match get_group_info(nntp_stream, group_name) {
             Ok(group_info) => {
                 results.push((group_name.clone(), group_info));
             }
@@ -196,7 +217,5 @@ pub fn retrieve_groups_info(
             }
         }
     }
-
-    let _ = nntp_stream.quit();
     Ok(results)
 }

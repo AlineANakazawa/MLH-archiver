@@ -1,4 +1,4 @@
--- this query acompanies the "revisions_analisis" script
+-- this query accompanies the "revisions_analysis" script
 --
 -- check the P90 max patch version for each list and the global P90
 --

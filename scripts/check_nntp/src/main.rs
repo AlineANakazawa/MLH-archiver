@@ -207,126 +207,134 @@ fn main() -> mlh_archiver::Result<()> {
         return batch_mode(&server, &args, &groups, list_pattern);
     }
 
-    // Interactive selection
-    let mut select_options = vec!["*".to_string()];
-    select_options.extend(groups.clone());
+    // Interactive selection + fetch loop
+    loop {
+        let mut select_options = vec!["*".to_string()];
+        select_options.extend(groups.clone());
 
-    let selected = MultiSelect::new("Select mailing lists to preview:", select_options)
-        .with_help_message("Space to select, Enter to confirm")
+        let selected = MultiSelect::new("Select mailing lists to preview:", select_options)
+            .with_help_message("Space to select, Enter to confirm, Esc to quit")
+            .prompt()
+            .unwrap_or_else(|_| std::process::exit(0));
+
+        if selected.is_empty() {
+            println!("No lists selected. Exiting.");
+            return Ok(());
+        }
+
+        let groups_to_preview = if selected.iter().any(|s| s == "*") {
+            println!("📋 Previewing all {} lists...\n", groups.len());
+            groups.clone()
+        } else {
+            println!("📋 Previewing {} selected lists...\n", selected.len());
+            selected.clone()
+        };
+
+        println!("📊 Fetching email ranges...");
+        let groups_info = match mlh_archiver::nntp_source::retrieve_groups_info(
+            &server.hostname,
+            server.port,
+            &groups_to_preview,
+            args.username.clone(),
+            args.password.clone(),
+        ) {
+            Ok(info) => info,
+            Err(e) => {
+                eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
+                Vec::new()
+            }
+        };
+
+        println!("\n📈 Article Range Preview:");
+        println!("─────────────────────────────────────────────────────────────");
+        println!("{:<50} {:>12}", "Group", "Articles");
+        println!("─────────────────────────────────────────────────────────────");
+
+        for (group_name, group_info) in &groups_info {
+            let article_count = group_info.high - group_info.low + 1;
+            let range_str = format!("[{}..{}]", group_info.low, group_info.high);
+            println!("{:<50} {:>12}", truncate_str(group_name, 49), range_str);
+            println!("{:<50} {:>12}", "", format!("({} total)", article_count));
+        }
+
+        println!("─────────────────────────────────────────────────────────────\n");
+
+        if groups_info.is_empty() {
+            continue;
+        }
+
+        let input = Text::new(
+            "Fetch emails? (number/range, Enter=latest, n=back to lists, q=quit)",
+        )
+        .with_help_message("Examples: 42, 1-10, 1..10, 1,3,5-7")
         .prompt()
         .unwrap_or_else(|_| std::process::exit(0));
 
-    if selected.is_empty() {
-        println!("No lists selected. Exiting.");
-        return Ok(());
-    }
-
-    // Handle "*" selection
-    let groups_to_preview = if selected.iter().any(|s| s == "*") {
-        println!("📋 Previewing all {} lists...\n", groups.len());
-        groups.clone()
-    } else {
-        println!("📋 Previewing {} selected lists...\n", selected.len());
-        selected.clone()
-    };
-
-    // Get group info (email ranges)
-    println!("📊 Fetching email ranges...");
-    let groups_info = match mlh_archiver::nntp_source::retrieve_groups_info(
-        &server.hostname,
-        server.port,
-        &groups_to_preview,
-        args.username.clone(),
-        args.password.clone(),
-    ) {
-        Ok(info) => info,
-        Err(e) => {
-            eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
-            Vec::new()
-        }
-    };
-
-    // Display results
-    println!("\n📈 Article Range Preview:");
-    println!("─────────────────────────────────────────────────────────────");
-    println!("{:<50} {:>12}", "Group", "Articles");
-    println!("─────────────────────────────────────────────────────────────");
-
-    for (group_name, group_info) in &groups_info {
-        let article_count = group_info.high - group_info.low + 1;
-        let range_str = format!("[{}..{}]", group_info.low, group_info.high);
-        println!("{:<50} {:>12}", truncate_str(group_name, 49), range_str);
-        println!("{:<50} {:>12}", "", format!("({} total)", article_count));
-    }
-
-    println!("─────────────────────────────────────────────────────────────\n");
-
-    // Offer to test fetch a sample article
-    if !groups_info.is_empty() {
-        let test_fetch = inquire::Confirm::new("Test fetch a sample article from a selected list?")
-            .with_default(false)
-            .prompt()
-            .unwrap_or(false);
-
-        if test_fetch {
-            let list_options: Vec<&String> = groups_info.iter().map(|(name, _)| name).collect();
-            if let Ok(selection) = Select::new("Select a list to test:", list_options).prompt() {
-                if let Some((_, group_info)) =
-                    groups_info.iter().find(|(name, _)| name == selection)
+        let input = input.trim();
+        match input {
+            "q" | "Q" => {
+                println!("\n✨ Done!");
+                return Ok(());
+            }
+            "n" | "N" => continue,
+            "" => {
+                let list_options: Vec<&String> =
+                    groups_info.iter().map(|(name, _)| name).collect();
+                if let Ok(selection) =
+                    Select::new("Select a list to fetch latest article:", list_options).prompt()
                 {
-                    println!(
-                        "\n📥 Testing fetch from {} (articles {} to {})",
-                        selection, group_info.low, group_info.high
-                    );
-
-                    if group_info.high >= group_info.low {
-                        let test_article_num = group_info.high;
-                        println!("Attempting to fetch article #{}...", test_article_num);
-
-                        match connect_to_nntp_server(
-                            &server.hostname,
-                            server.port,
-                            args.username.clone(),
-                            args.password.clone(),
-                        ) {
-                            Ok(mut stream) => {
-                                // Select the group first
-                                match stream.group(selection) {
-                                    Ok(_) => match stream.raw_article_by_number(test_article_num) {
-                                        Ok(raw_lines) => {
-                                            println!(
-                                                "✅ Successfully fetched article #{} \n\n----------",
-                                                test_article_num
-                                            );
-                                            println!("Size: {} lines", raw_lines.len());
-                                            for line in raw_lines {
-                                                println!("{}", line.trim());
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!("⚠️  Article unavailable: {}", e);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        println!("⚠️  Failed to select group: {}", e);
-                                    }
-                                }
-                                let _ = stream.quit();
-                            }
-                            Err(e) => {
-                                println!("⚠️  Failed to connect: {}", e);
-                            }
+                    if let Some((_, group_info)) =
+                        groups_info.iter().find(|(name, _)| name == selection)
+                    {
+                        if group_info.high >= group_info.low {
+                            let latest = vec![group_info.high as usize];
+                            fetch_and_display_articles(
+                                &server,
+                                &args.username,
+                                &args.password,
+                                selection,
+                                &latest,
+                            );
+                        } else {
+                            println!("⚠️  Group appears to be empty (low > high)");
                         }
-                    } else {
-                        println!("⚠️  Group appears to be empty (low > high)");
                     }
                 }
             }
+            range_str => match try_parse_id_range(range_str) {
+                Some(ids) => {
+                    let count = groups_info.len();
+                    for (i, (group_name, _)) in groups_info.iter().enumerate() {
+                        if i > 0 {
+                            let proceed = Confirm::new(&format!(
+                                "Continue to '{}'? ({}/{})",
+                                group_name,
+                                i + 1,
+                                count
+                            ))
+                            .with_default(true)
+                            .prompt()
+                            .unwrap_or(false);
+
+                            if !proceed {
+                                break;
+                            }
+                        }
+                        fetch_and_display_articles(
+                            &server,
+                            &args.username,
+                            &args.password,
+                            group_name,
+                            &ids,
+                        );
+                    }
+                }
+                None => {
+                    eprintln!("⚠️  Try again or enter 'n' to go back, 'q' to quit.");
+                }
+            },
         }
     }
-
-    println!("\n✨ Done!");
-    Ok(())
 }
 
 /// Run batch mode: filter groups by glob pattern, fetch articles by id range.
@@ -410,6 +418,21 @@ fn parse_id_range(input: &str) -> Vec<usize> {
             eprintln!("   Supported formats: 42, 1-10, 1..10, 1,3,5-7");
             std::process::exit(1);
         }
+    }
+}
+
+fn try_parse_id_range(input: &str) -> Option<Vec<usize>> {
+    let normalized = input.replace("..", "-");
+    match parse_sequence(&normalized) {
+        Ok(iter) => {
+            let ids: Vec<usize> = iter.collect();
+            if ids.is_empty() {
+                None
+            } else {
+                Some(ids)
+            }
+        }
+        Err(_) => None,
     }
 }
 

@@ -3,8 +3,9 @@ from mlh_analysis import list_sizes
 from mlh_analysis import unique_authors
 from mlh_analysis import date_analysis
 from mlh_analysis import patch_missing
-from mlh_analysis import author_distribution
 from mlh_analysis import date_missing
+from mlh_analysis import author_distribution
+from mlh_analysis import list_duplications
 from mlh_analysis import sql_querier
 from mlh_analysis.inputs import resolve_inputs
 
@@ -29,6 +30,9 @@ def main():
         "date_missing": lambda: date_missing.main(inputs["dataset"], output_dir),
         # these scripts below will not run by default
         "author_distribution": lambda: author_distribution.main(
+            inputs["dataset"], output_dir
+        ),
+        "list_duplications": lambda: list_duplications.main(
             inputs["dataset"], output_dir
         ),
         "sql_querier": lambda: sql_querier.main(

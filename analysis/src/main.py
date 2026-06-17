@@ -5,7 +5,7 @@ from mlh_analysis import date_analysis
 from mlh_analysis import patch_missing
 from mlh_analysis import date_missing
 from mlh_analysis import author_distribution
-from mlh_analysis import list_duplications
+from mlh_analysis import in_list_duplications
 from mlh_analysis import duplicate_messages
 from mlh_analysis import sql_querier
 from mlh_analysis import revisions_analysis
@@ -61,7 +61,7 @@ def main():
         "author_distribution": lambda: author_distribution.main(
             pick("dataset", "anon_dataset"), output_dir
         ),
-        "list_duplications": lambda: list_duplications.main(
+        "in_list_duplications": lambda: in_list_duplications.main(
             pick("dataset", "anon_dataset"), output_dir
         ),
         "sql_querier": lambda: sql_querier.main(
@@ -75,6 +75,7 @@ def main():
         "sql_querier",
         "revisions_analysis",
         "duplicate_messages",
+        "in_list_duplications",
     ]
 
     run_all_scripts = False

@@ -44,7 +44,7 @@ def main(working_dir, output_dir):
         print(duplicates)
 
     lists_key = LISTS_OF_INTEREST[0] if len(LISTS_OF_INTEREST) == 1 else "_".join([m_list[:4] for m_list in LISTS_OF_INTEREST])
-    output_path = os.path.join(output_dir, f"duplications_{lists_key}.csv")
+    output_path = os.path.join(output_dir, f"in_list_duplications_{lists_key}.csv")
 
     duplicates_csv = duplicates.with_columns(
 	    pl.col("lists_present").list.join(", ").alias("lists_present")

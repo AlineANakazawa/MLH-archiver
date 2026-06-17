@@ -1,0 +1,42 @@
+Return-Path: <linux-kernel-owner+w=anon.example-S967889AbXJSWCP@vger.kernel.org>
+Message-Id: <20071019220007.791059000@linux.vnet.ibm.com>
+References: <20071019215538.395133000@linux.vnet.ibm.com>
+Date: Thu, 01 Jan 1970 01:00:01 +0100
+From: Mônica Sousa <monica.sousa@vila.local>
+Subject: [patch 1/1] qeth: remove header_ops bug
+Content-Disposition: inline; filename=qeth.patch
+Sender: linux-kernel-owner@vger.kernel.org
+List-Archive: <https://lore.kernel.org/lkml/>
+List-Post: <mailto:linux-kernel@vger.kernel.org>
+To: cebolinha@vila.local, netdev@vger.kernel.org, linux-s390@vger.kernel.org
+Cc: cascao@linux.vnet.ibm.com, magali@vila.local, linux-kernel@vger.kernel.org, franjinha@linux.vnet.ibm.com, chico.bento@trash.net
+List-ID: <linux-s390.vger.kernel.org>
+
+From: Mônica Sousa <monica.sousa@vila.local>
+
+Remove qeth bug caused by commit:
+[NET]: Move hardware header operations out of netdevice.
+
+Signed-off-by: Mônica Sousa <monica.sousa@vila.local>
+---
+ drivers/s390/net/qeth_main.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+Index: linux-2.6-monica/drivers/s390/net/qeth_main.c
+===================================================================
+--- linux-2.6-monica.orig/drivers/s390/net/qeth_main.c
++++ linux-2.6-monica/drivers/s390/net/qeth_main.c
+@@ -6643,7 +6643,8 @@ qeth_netdev_init(struct net_device *dev)
+	dev->vlan_rx_kill_vid = qeth_vlan_rx_kill_vid;
+	dev->vlan_rx_add_vid = qeth_vlan_rx_add_vid;
+ #endif
+-	dev->header_ops = &qeth_null_ops;
++	if (qeth_get_netdev_flags(card) & IFF_NOARP)
++		dev->header_ops = &qeth_null_ops;
+
+ #ifdef CONFIG_QETH_IPV6
+	/*IPv6 address autoconfiguration stuff*/
+
+-- 
+# TODO: this email has no valid date header, but we can use the
+# reference emails to find a valid date

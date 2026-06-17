@@ -59,7 +59,7 @@ pub fn flush_batch(
     Ok(())
 }
 
-/// Builds an Arrow [`RecordBatch`] from a slice of `(ParsedEmail, file_name)` pairs.
+/// Builds an Arrow [`RecordBatch`] from a slice of `(ParsedEmail, source_reference)` pairs.
 ///
 /// Uses the fixed schema defined in [`PARQUET_SCHEMA`](crate::constants::PARQUET_SCHEMA).
 /// Each parsed email becomes one row; list-valued columns (to, cc, references,
@@ -74,6 +74,14 @@ pub fn build_record_batch(
     let mut to_arr = ListBuilder::new(StringBuilder::new());
     let mut cc_arr = ListBuilder::new(StringBuilder::new());
     let mut subject_arr = StringBuilder::new();
+    let mut has_patch_tag_arr = BooleanBuilder::new();
+    let mut has_rfc_tag_arr = BooleanBuilder::new();
+    let mut has_response_tag_arr = BooleanBuilder::new();
+    let mut has_forward_tag_arr = BooleanBuilder::new();
+    let mut patch_version_arr = UInt16Builder::new();
+    let mut patchset_sequence_number_arr = StringBuilder::new();
+    let mut untagged_subject_arr = StringBuilder::new();
+    let mut subject_tags_arr = ListBuilder::new(StringBuilder::new());
     let mut date_arr = TimestampMicrosecondBuilder::new();
     let mut client_date_arr = ListBuilder::new(StringBuilder::new());
     let mut message_id_arr = StringBuilder::new();
@@ -95,9 +103,14 @@ pub fn build_record_batch(
 
     let mut code_arr = ListBuilder::new(StringBuilder::new());
     let mut raw_body_arr = StringBuilder::new();
-    let mut file_name_arr = StringBuilder::new();
+    let mut body_sha1_arr = StringBuilder::new();
+    let mut source_reference_arr = StringBuilder::new();
 
-    for (idx, (email, file_name)) in emails.iter().enumerate() {
+    for (idx, (email, source_reference)) in emails.iter().enumerate() {
+        // message_id
+        {
+            message_id_arr.append_value(&email.message_id);
+        }
         // from
         {
             from_arr.append_value(&email.from);
@@ -124,6 +137,34 @@ pub fn build_record_batch(
             subject_arr.append_value(&email.subject);
         }
 
+        // subject_tags fields
+        {
+            let st = &email.subject_tags;
+            has_patch_tag_arr.append_value(st.has_patch_tag);
+            has_rfc_tag_arr.append_value(st.has_rfc_tag);
+            has_response_tag_arr.append_value(st.has_response_tag);
+            has_forward_tag_arr.append_value(st.has_forward_tag);
+
+            if let Some(v) = st.patch_version {
+                patch_version_arr.append_value(v);
+            } else {
+                patch_version_arr.append_null();
+            }
+
+            if let Some(ref seq) = st.patchset_sequence_number {
+                patchset_sequence_number_arr.append_value(seq);
+            } else {
+                patchset_sequence_number_arr.append_null();
+            }
+
+            untagged_subject_arr.append_value(&st.untagged_subject);
+
+            for tag in &st.subject_tags {
+                subject_tags_arr.values().append_value(tag);
+            }
+            subject_tags_arr.append(!st.subject_tags.is_empty());
+        }
+
         // date
         {
             if let Some(dt) = email.date {
@@ -136,13 +177,10 @@ pub fn build_record_batch(
 
         // client-date
         {
-            client_date_arr.values().append_value(&email.client_date);
+            for client_date in &email.client_date {
+                client_date_arr.values().append_value(client_date);
+            }
             client_date_arr.append(!email.client_date.is_empty());
-        }
-
-        // message_id
-        {
-            message_id_arr.append_value(&email.message_id);
         }
 
         // in_reply_to
@@ -173,19 +211,22 @@ pub fn build_record_batch(
         // trailers - struct list
         {
             let struct_builder = trailers_arr.values();
-            for attr in &email.trailers {
-                struct_builder
-                    .field_builder::<StringBuilder>(0)
-                    .unwrap()
-                    .append_value(&attr.attribution);
-                struct_builder
-                    .field_builder::<StringBuilder>(1)
-                    .unwrap()
-                    .append_value(&attr.identification);
-                struct_builder.append(true);
+            if email.trailers.is_empty() {
+                trailers_arr.append_null();
+            } else {
+                for attr in &email.trailers {
+                    struct_builder
+                        .field_builder::<StringBuilder>(0)
+                        .unwrap()
+                        .append_value(&attr.attribution);
+                    struct_builder
+                        .field_builder::<StringBuilder>(1)
+                        .unwrap()
+                        .append_value(&attr.identification);
+                    struct_builder.append(true);
+                }
+                trailers_arr.append(true);
             }
-            // Non nullable. Use empty lists instead
-            trailers_arr.append(true);
         }
 
         // code
@@ -196,9 +237,11 @@ pub fn build_record_batch(
             code_arr.append(!email.code.is_empty());
         }
 
-        log::debug!("build_record_batch[{idx}] email_id={file_name}",);
+        log::debug!("build_record_batch[{idx}] email_id={source_reference}",);
         raw_body_arr.append_value(email.raw_body.as_str());
-        file_name_arr.append_value(file_name.as_str());
+        body_sha1_arr.append_value(email.body_sha1.as_str());
+
+        source_reference_arr.append_value(source_reference.as_str());
     }
 
     log::debug!(
@@ -210,20 +253,29 @@ pub fn build_record_batch(
     let batch = RecordBatch::try_new(
         Arc::new(schema),
         vec![
+            Arc::new(message_id_arr.finish()),
             Arc::new(from_arr.finish()),
             Arc::new(to_arr.finish()),
             Arc::new(cc_arr.finish()),
             Arc::new(subject_arr.finish()),
+            Arc::new(has_patch_tag_arr.finish()),
+            Arc::new(has_rfc_tag_arr.finish()),
+            Arc::new(has_response_tag_arr.finish()),
+            Arc::new(has_forward_tag_arr.finish()),
+            Arc::new(patch_version_arr.finish()),
+            Arc::new(patchset_sequence_number_arr.finish()),
+            Arc::new(subject_tags_arr.finish()),
+            Arc::new(untagged_subject_arr.finish()),
             Arc::new(date_arr.finish()),
             Arc::new(client_date_arr.finish()),
-            Arc::new(message_id_arr.finish()),
             Arc::new(in_reply_to_arr.finish()),
             Arc::new(references_arr.finish()),
             Arc::new(x_mailing_list_arr.finish()),
             Arc::new(trailers_arr.finish()),
             Arc::new(code_arr.finish()),
             Arc::new(raw_body_arr.finish()),
-            Arc::new(file_name_arr.finish()),
+            Arc::new(body_sha1_arr.finish()),
+            Arc::new(source_reference_arr.finish()),
         ],
     )?;
 

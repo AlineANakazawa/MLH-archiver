@@ -60,7 +60,6 @@ enabling natural load balancing.
 ### Native Build
 
 - Rust toolchain (cargo, rustc)
-- `libiconv` (for character encoding support)
 
 ### Container Build (Alternative)
 
@@ -425,18 +424,13 @@ See [Output Format](#output-format) for details on file layout based on `write_m
 ```
 output/
 ├── list.name/
+│   ├── 1.eml                    # Fetched raw email
+│   ├── data_000.parquet         # or in parquet format
 │   ├── __progress.yaml          # YAML: last processed ID (resume)
 │   ├── __lineage.yaml           # YAML stream: DataLineage audit trail
 │   └── __errors.csv             # CSV: id,error_message
 ```
-output/
-├── list.name/
-│   ├── 1.eml                    # Fetched email
-│   ├── 2.eml
-│   ├── __progress.yaml          # YAML: last processed ID (resume)
-│   ├── __lineage.yaml           # YAML stream: DataLineage audit trail
-│   └── __errors.csv             # CSV: id,error_message
-```
+
 
 ### 1. Create Source Module
 
@@ -723,7 +717,6 @@ Create `tests/test_list_archive_x.rs` following the pattern in `tests/test_nntp.
 
 ### Build Issues
 
-- Ensure `libiconv` is installed for character encoding support
 - For container builds, verify Podman/Docker is running
 
 ### Logging

@@ -1,6 +1,6 @@
 # MLH Anonymizer
 
-A Python tool for pseudo-anonymizing personal identification data in mailing list datasets.
+A Rust tool for pseudo-anonymizing personal identification data in mailing list datasets using Polars.
 
 ## Overview
 
@@ -12,8 +12,10 @@ The MLH Anonymizer processes Parquet datasets produced by the MLH Parser and rep
 
 - **SHA1 Hashing**: Replaces email addresses and names with consistent hashes
 - **Deterministic**: Same input always produces the same hash, enabling longitudinal analysis
-- **Polars-Powered**: Fast, memory-efficient processing using the Polars DataFrame library
-- **Compressed Output**: Produces smaller, optimized Parquet files
+- **Polars-Powered**: Fast columnar transformations using the Polars DataFrame library
+- **Parallel Processing**: Multi-threaded using Rayon — one thread per mailing list, batched within each list
+- **Hive-Partitioned Output**: Anonymized data written under `dataset/list=<name>/` and identity map under `id_map_from/list=<name>/`
+- **Configurable**: YAML configuration for thread count, I/O paths, list selection, and batch size
 
 ## How It Works
 
@@ -36,14 +38,13 @@ The same email address always produces the same hash, allowing you to:
 
 ## Prerequisites
 
-### Container Runtime (Required for production)
-- Podman with Podman Compose, or
-- Docker with Docker Compose
+### Required
+- Rust/Cargo, or
+- Podman with Podman Compose, or Docker with Docker Compose (for containerized builds)
 
 ### Native Development (Optional)
-- Python 3.14+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Nox (for testing)
+- Rust toolchain (rustup)
+- [Devbox](https://www.jetify.com/devbox/) (recommended)
 
 ## Installation
 
@@ -53,16 +54,13 @@ The same email address always produces the same hash, allowing you to:
 devbox shell
 ```
 
-This sets up Python 3.14, uv, and all required dependencies automatically.
+This sets up Rust, Python, and all required dependencies automatically.
 
 ### Manual Setup
 
+Install the Rust toolchain via [rustup](https://rustup.rs/):
 ```bash
-# Install uv if not already installed
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install dependencies
-uv sync --locked
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ## Usage
@@ -72,94 +70,69 @@ uv sync --locked
 The anonymizer expects the parsed Parquet dataset from the MLH Parser.
 
 ```bash
-# Using Make
+# Using Make (builds and runs)
 make anonymize
 
 # Using Devbox
 devbox run anonymize
 
-# Debug mode (native execution)
-make debug-anonymizer
-# or
-INPUT_DIR="../output/parser/dataset" OUTPUT_DIR="../output/anonymizer" uv run src/main.py
+# Debug mode (verbose logging)
+RUST_LOG=debug cargo run
 ```
 
-### Input/Output Directories
+### Configuration
 
-| Directory | Purpose |
-|-----------|---------|
-| `../output/parser/dataset/` | Input: Non-anonymized Parquet dataset |
-| `../output/anonymizer/` | Output: Anonymized dataset |
+The anonymizer uses a YAML configuration file. Copy the example and edit:
+
+```bash
+cp example_anonymizer_config.yaml anonymizer_config.yaml
+```
+
+```yaml
+nthreads: 2
+input_dir_path: "./output/parser/dataset/"
+output_dir_path: "./output/anonymizer/"
+lists_to_anonymize: 
+  # - linux-api    # Comment out to process all lists
+  # - lkml
+```
+
+| Field | Description |
+|-------|-------------|
+| `nthreads` | Number of worker threads (one mailing list per thread) |
+| `input_dir_path` | Directory containing parsed Parquet files |
+| `output_dir_path` | Root output directory for anonymized files |
+| `lists_to_anonymize` | Optional list of mailing list names to process (omit for all) |
 
 ## Output Format
 
-The anonymized dataset maintains the same structure as the input but with hashed PII fields:
-
 ```
 output/anonymizer/
-├── mailing_list=dev.rcpassos.me.lists.gfs2/
-│   ├── part-0.parquet
-│   └── part-1.parquet
-├── mailing_list=dev.rcpassos.me.lists.iommu/
-│   └── part-0.parquet
-└── _common_metadata
+├── dataset/
+│   ├── list=dev.rcpassos.me.lists.gfs2/
+│   │   └── list_data.parquet
+│   ├── list=dev.rcpassos.me.lists.iommu/
+│   │   └── list_data.parquet
+│   └── ...
+└── id_map_from/
+    ├── list=dev.rcpassos.me.lists.gfs2/
+    │   └── list_data.parquet
+    └── ...
 ```
+
+Each `list_data.parquet` is a single file with multiple row groups (controlled by `BATCH_MAX_RECORDS = 50_000`).
 
 ### Anonymized Fields
 
-The following fields are typically anonymized:
+| Original Field | Type | Anonymized Form |
+|----------------|------|-----------------|
+| `from` | String | SHA1 hash |
+| `to` | List\<String\> | Each element: SHA1 hash |
+| `cc` | List\<String\> | Each element: SHA1 hash |
+| `raw_body` | String | Inline identities: SHA1 hash |
+| `trailers.identification` | List\<Struct\> | `identification` field: SHA1 hash |
 
-| Original Field | Anonymized Form |
-|----------------|-----------------|
-| `from` (email) | SHA1 hash |
-| `to` (email) | SHA1 hash |
-| `from_name` | SHA1 hash |
-| Any other PII fields | SHA1 hash |
-
-## Configuration
-
-Configuration is done via environment variables:
-
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `INPUT_DIR` | Directory containing parsed Parquet files |
-| `OUTPUT_DIR` | Output directory for anonymized files |
-
-### Concurrency
-
-Thread allocation is controlled by three variables. Explicit `N_PROC` and `POLARS_MAX_THREADS` take precedence over the automatic split described below.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_TOTAL_THREADS` | half CPU cores | Approximate concurrent thread cap (workers × Polars threads per worker) |
-| `N_PROC` | auto | Number of multiprocessing worker processes. Overrides the auto-split. |
-| `POLARS_MAX_THREADS` | auto | Number of threads per Polars worker. Overrides the auto-split. |
-
-When `N_PROC` and `POLARS_MAX_THREADS` are both unset, the split keeps `N_PROC × POLARS_MAX_THREADS ≈ MAX_TOTAL_THREADS`, biasing toward more workers and lean Polars pools to avoid thread exhaustion:
-
-| Budget (`MAX_TOTAL_THREADS`) | Workers (`N_PROC`) | Polars threads | Actual threads ≈ |
-|------------------------------|---------------------|----------------|-------------------|
-| ≤ 1                          | 1                   | 2              | 2                |
-| > 1                         | 60% of budget       | budget ÷ workers (min 2) | budget (approx)  |
-
-### Other
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DEBUG` | `false` | Set to `true` to force single-worker, single-thread sequential execution |
-| `LISTS_TO_PARSE` | _(all)_ | Comma-separated list of mailing list names to process |
-
-### Docker Compose Configuration
-
-The `compose.yaml` file configures volume mounts:
-
-```yaml
-volumes:
-  - ../output/parser/dataset/:/input:z    # Input dataset
-  - ../output/anonymizer:/output:z       # Output directory
-```
+String columns are processed with `Series::apply_values`. List columns (`to`, `cc`) use `ListStringChunkedBuilder`. Struct-list columns (`trailers`) use `StructChunked::from_series` + `ListArray` reconstruction.
 
 ## Development
 
@@ -167,24 +140,19 @@ volumes:
 
 ```bash
 # Using Make
-make test
+make test-anonymizer
 
 # Using Devbox
 devbox run test-anonymizer
 
-# Native with nox
-nox
-
-# Native with pytest
-uv run pytest
+# Native with cargo
+cargo test
 ```
 
 ### Debug Mode
 
-Run the anonymizer directly without containers:
-
 ```bash
-INPUT_DIR="../output/parser/dataset" OUTPUT_DIR="../output/anonymizer" uv run src/main.py
+RUST_LOG=debug cargo run
 ```
 
 ### Project Structure
@@ -192,48 +160,29 @@ INPUT_DIR="../output/parser/dataset" OUTPUT_DIR="../output/anonymizer" uv run sr
 ```
 anonymizer/
 ├── src/
-│   └── mlh_anonymizer/
-│       ├── __init__.py      # Module entry point
-│       ├── main.py          # Main execution logic
-│       └── constants.py     # Configuration constants
-├── tests/                   # Test suite
-├── Containerfile            # Docker/Podman image
-├── compose.yaml             # Container orchestration
-├── pyproject.toml           # Python project configuration
-├── uv.lock                  # Locked dependencies
-├── noxfile.py               # Test automation
-└── Makefile                 # Build automation
+│   ├── main.rs          # CLI entry point
+│   ├── lib.rs           # Orchestration (start, process_mailing_list)
+│   ├── transform.rs     # Core anonymization logic
+│   ├── reader.rs        # Parquet reading (Polars)
+│   ├── writer.rs        # Parquet writing (Polars with row group control)
+│   ├── anonymizer.rs    # SHA1 hashing engine
+│   ├── config.rs        # YAML configuration loading
+│   ├── constants.rs     # Column lists, batch sizes, schemas
+│   └── errors.rs        # Error types
+├── tests/               # Integration and unit tests
+├── Cargo.toml           # Rust project configuration
+└── Makefile             # Build automation
 ```
 
 ## Dependencies
 
 ### Runtime
-- `polars` (~1.39) - Fast DataFrame library for data processing
-
-### Development
-- `pytest` (>=9.0) - Testing framework
-- `nox` (>=2026.2) - Test automation
-
-## Container Build
-
-The anonymizer runs in a container using the `ghcr.io/astral-sh/uv:python3.14-trixie-slim` base image.
-
-```bash
-# Rebuild container image
-make rebuild
-
-# Or with devbox
-devbox run rebuild
-```
-
-## Security Considerations
-
-### SHA1 Hashing
-
-While SHA1 is considered cryptographically broken for security-critical applications, it is sufficient for pseudo-anonymization where:
-- The goal is privacy protection, not cryptographic security
-- Collision resistance is not critical
-- Deterministic hashing is needed for data linkage
+- `polars` (0.53) — Columnar data processing and Parquet I/O
+- `rayon` (1.12) — Parallel processing per mailing list
+- `sha1` (0.10) — Deterministic hashing
+- `regex` (1) — Email/identity extraction
+- `clap` (4.6) — CLI argument parsing
+- `config` (0.15) — YAML configuration loading
 
 ## Integration with Other Components
 
@@ -257,18 +206,18 @@ make anonymize  # Anonymize data
 make analysis   # Run analysis
 ```
 
-## Example Usage with Polars
+## Example Usage with Polars (Python)
 
 ```python
 import polars as pl
 
 # Read the anonymized dataset
-df = pl.scan_parquet("../output/anonymizer/**/*.parquet")
+df = pl.scan_parquet("../output/anonymizer/dataset/**/*.parquet")
 
 # Count emails per anonymized user
 result = (
     df
-    .group_by("from_hash")
+    .group_by("from")
     .agg(pl.len().alias("email_count"))
     .sort("email_count", descending=True)
     .limit(10)
@@ -282,12 +231,7 @@ result = (
 # Remove build artifacts
 make clean
 
-# This removes:
-# - .venv/
-# - .nox/
-# - .ruff_cache/
-# - .pytest_cache/
-# - __pycache__/
+# This runs: cargo clean
 ```
 
 ## Troubleshooting
@@ -298,14 +242,11 @@ Run the parser first to generate the Parquet dataset:
 make parse
 ```
 
-### Container Permission Issues
-The compose file uses `user: "${UID}:${GID}"` to match your user ID. Ensure your user has read/write access to the input/output directories.
-
 ### Memory Issues
 For large datasets, consider:
-- Processing in smaller chunks
-- Increasing container memory limits
-- Using Polars streaming mode
+- Reducing `nthreads` in the config to process fewer lists concurrently
+- Processing a subset of lists using `lists_to_anonymize`
+- Lowering `BATCH_MAX_RECORDS` in `constants.rs`
 
 ## License
 

@@ -1,32 +1,37 @@
-//! check_nntp - Interactive NNTP mailing list browser
+//! check_nntp - NNTP mailing list browser & article fetcher
 //!
-//! This tool allows you to interactively browse available NNTP mailing lists,
-//! preview email ranges, and generate configuration snippets for the MLH Archiver.
+//! This tool allows you to browse NNTP mailing lists interactively or fetch
+//! specific articles by glob pattern and article number/range.
 //!
 //! # Usage
 //!
+//! ## Interactive mode (default)
+//!
 //! ```bash
-//! # Interactive mode (prompts for server URL)
 //! cargo run --package check_nntp
-//!
-//! # With CLI arguments
 //! cargo run --package check_nntp -- -s nntp://nntp.example.com
-//!
-//! # With TLS
 //! cargo run --package check_nntp -- -s nntps://nntp.example.com
-//!
-//! # Custom port
 //! cargo run --package check_nntp -- -s nntp://nntp.example.com:8119
+//! ```
 //!
-//! # Export configuration after browsing
-//! cargo run --package check_nntp -- -s nntp://nntp.example.com --export-config
+//! ## Batch mode (fetch specific articles)
+//!
+//! ```bash
+//! cargo run --package check_nntp -- -s nntp://nntp.example.com -l "*-kernel" --id 42
+//! cargo run --package check_nntp -- -s nntp://nntp.example.com -l "*-kernel" --id 1-10
+//! cargo run --package check_nntp -- -s nntp://nntp.example.com -l "*-kernel" --id '1..10'
+//! cargo run --package check_nntp -- -s nntp://nntp.example.com -l "*-kernel" --id '1,3,5-7'
 //! ```
 
 use clap::Parser;
+use glob::Pattern;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use mlh_archiver::nntp_source::{
-    connect_to_nntp_server, nntp_utils::server_address, retrieve_lists_with_connection,
+    connect_to_nntp_server, nntp_utils::server_address, retrieve_groups_info_with_connection,
+    retrieve_lists_with_connection,
 };
+use mlh_archiver::range_inputs::parse_sequence;
+use nntp::NNTPStream;
 use std::env;
 
 /// Parsed server configuration from a URL.
@@ -129,6 +134,14 @@ struct Args {
     /// Enable verbose logging
     #[arg(short = 'v', long = "verbose")]
     verbose: bool,
+
+    /// Glob pattern to filter mailing lists (e.g., "*-kernel"). Triggers batch mode.
+    #[arg(short = 'l', long = "list")]
+    list: Option<String>,
+
+    /// Article ID or range to fetch (e.g., "1", "1-10", "1..10", "1,3-5,7")
+    #[arg(long = "id")]
+    id: Option<String>,
 }
 
 fn main() -> mlh_archiver::Result<()> {
@@ -142,8 +155,8 @@ fn main() -> mlh_archiver::Result<()> {
     println!("=========================================\n");
 
     // Get server config from CLI, env, or prompt
-    let server = if let Some(url) = args.server {
-        match parse_server_url(&url) {
+    let server = if let Some(ref url) = args.server {
+        match parse_server_url(url) {
             Ok(cfg) => cfg,
             Err(e) => {
                 eprintln!("❌ Invalid server URL: {}", e);
@@ -167,20 +180,25 @@ fn main() -> mlh_archiver::Result<()> {
     let tls_label = if server.use_tls { " (TLS)" } else { "" };
     log::info!("Connecting to NNTP server: {}{}", server_url, tls_label);
 
-    // Connect and retrieve list of groups
-    println!(
-        "🔍 Fetching available mailing lists from {}{}...",
-        server_url, tls_label
-    );
-    let groups = match retrieve_lists_with_connection(
+    // Connect to NNTP server and retrieve list of groups
+    println!("🔍 Connecting to {}{}...", server_url, tls_label);
+    let mut conn = match connect_to_nntp_server(
         &server.hostname,
         server.port,
         args.username.clone(),
         args.password.clone(),
     ) {
-        Ok(g) => g,
+        Ok(stream) => NntpConnection::new(stream),
         Err(e) => {
             eprintln!("❌ Failed to connect to NNTP server: {}", e);
+            return Err(e);
+        }
+    };
+
+    let groups = match retrieve_lists_with_connection(conn.stream()) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("❌ Failed to fetch mailing lists: {}", e);
             return Err(e);
         }
     };
@@ -192,155 +210,264 @@ fn main() -> mlh_archiver::Result<()> {
         return Ok(());
     }
 
-    // Interactive selection
-    let mut select_options = vec!["*".to_string()];
-    select_options.extend(groups.clone());
-
-    let selected = MultiSelect::new("Select mailing lists to preview:", select_options)
-        .with_help_message("Space to select, Enter to confirm")
-        .prompt()
-        .unwrap_or_else(|_| std::process::exit(0));
-
-    if selected.is_empty() {
-        println!("No lists selected. Exiting.");
-        return Ok(());
+    if let Some(ref list_pattern) = args.list {
+        let id = args.id.as_deref().unwrap_or_else(|| {
+            eprintln!("❌ --id is required when using --list");
+            eprintln!("   Examples: --id 42, --id 1-10, --id '1..10', --id '1,3,5-7'");
+            std::process::exit(1);
+        });
+        return batch_mode(conn.stream(), &groups, list_pattern, id);
     }
 
-    // Handle "*" selection
-    let groups_to_preview = if selected.iter().any(|s| s == "*") {
-        println!("📋 Previewing all {} lists...\n", groups.len());
-        groups.clone()
-    } else {
-        println!("📋 Previewing {} selected lists...\n", selected.len());
-        selected.clone()
-    };
+    // Interactive selection + fetch loop
+    loop {
+        let mut select_options = vec!["*".to_string()];
+        select_options.extend(groups.clone());
 
-    // Get group info (email ranges)
-    println!("📊 Fetching email ranges...");
-    let groups_info = match mlh_archiver::nntp_source::retrieve_groups_info(
-        &server.hostname,
-        server.port,
-        &groups_to_preview,
-        args.username.clone(),
-        args.password.clone(),
-    ) {
-        Ok(info) => info,
-        Err(e) => {
-            eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
-            Vec::new()
-        }
-    };
-
-    // Display results
-    println!("\n📈 Article Range Preview:");
-    println!("─────────────────────────────────────────────────────────────");
-    println!("{:<50} {:>12}", "Group", "Articles");
-    println!("─────────────────────────────────────────────────────────────");
-
-    for (group_name, group_info) in &groups_info {
-        let article_count = group_info.high - group_info.low + 1;
-        let range_str = format!("[{}..{}]", group_info.low, group_info.high);
-        println!("{:<50} {:>12}", truncate_str(group_name, 49), range_str);
-        println!("{:<50} {:>12}", "", format!("({} total)", article_count));
-    }
-
-    println!("─────────────────────────────────────────────────────────────\n");
-
-    // Show sample configuration
-    if args.export_config {
-        let config_yaml = generate_config_yaml(&server, &groups_to_preview);
-        println!("📝 Generated configuration:");
-        println!("{}", config_yaml);
-
-        // Optionally save to file
-        let save = Confirm::new("Save this configuration to archiver_config.yaml?")
-            .with_default(false)
+        let selected = MultiSelect::new("Select mailing lists to preview:", select_options)
+            .with_help_message("Space to select, Enter to confirm, Esc to quit")
             .prompt()
-            .unwrap_or(false);
+            .unwrap_or_else(|_| std::process::exit(0));
 
-        if save {
-            let config_content = generate_full_config_yaml(&server, &groups_to_preview);
-            match std::fs::write("archiver_config.yaml", config_content) {
-                Ok(_) => println!("✅ Configuration saved to archiver_config.yaml"),
-                Err(e) => eprintln!("❌ Failed to save configuration: {}", e),
+        if selected.is_empty() {
+            println!("No lists selected. Exiting.");
+            return Ok(());
+        }
+
+        let groups_to_preview = if selected.iter().any(|s| s == "*") {
+            println!("📋 Previewing all {} lists...\n", groups.len());
+            groups.clone()
+        } else {
+            println!("📋 Previewing {} selected lists...\n", selected.len());
+            selected.clone()
+        };
+
+        println!("📊 Fetching email ranges...");
+        let groups_info =
+            match retrieve_groups_info_with_connection(conn.stream(), &groups_to_preview) {
+                Ok(info) => info,
+                Err(e) => {
+                    eprintln!("⚠️  Warning: Failed to fetch some group info: {}", e);
+                    Vec::new()
+                }
+            };
+
+        println!("\n📈 Article Range Preview:");
+        println!("─────────────────────────────────────────────────────────────");
+        println!("{:<50} {:>12}", "Group", "Articles");
+        println!("─────────────────────────────────────────────────────────────");
+
+        for (group_name, group_info) in &groups_info {
+            let article_count = group_info.high - group_info.low + 1;
+            let range_str = format!("[{}..{}]", group_info.low, group_info.high);
+            println!("{:<50} {:>12}", truncate_str(group_name, 49), range_str);
+            println!("{:<50} {:>12}", "", format!("({} total)", article_count));
+        }
+
+        println!("─────────────────────────────────────────────────────────────\n");
+
+        if groups_info.is_empty() {
+            continue;
+        }
+
+        let input =
+            Text::new("Fetch emails? (number/range, Enter=latest, n=back to lists, q=quit)")
+                .with_help_message("Examples: 42, 1-10, 1..10, 1,3,5-7")
+                .prompt()
+                .unwrap_or_else(|_| std::process::exit(0));
+
+        let input = input.trim();
+        match input {
+            "q" | "Q" => {
+                println!("\n✨ Done!");
+                return Ok(());
             }
-        }
-    } else {
-        println!("💡 Tip: Run with --export-config to generate archiver configuration");
-    }
-
-    // Offer to test fetch a sample article
-    if !groups_info.is_empty() {
-        let test_fetch = inquire::Confirm::new("Test fetch a sample article from a selected list?")
-            .with_default(false)
-            .prompt()
-            .unwrap_or(false);
-
-        if test_fetch {
-            let list_options: Vec<&String> = groups_info.iter().map(|(name, _)| name).collect();
-            if let Ok(selection) = Select::new("Select a list to test:", list_options).prompt() {
-                if let Some((_, group_info)) =
-                    groups_info.iter().find(|(name, _)| name == selection)
+            "n" | "N" => continue,
+            "" => {
+                let list_options: Vec<&String> = groups_info.iter().map(|(name, _)| name).collect();
+                if let Ok(selection) =
+                    Select::new("Select a list to fetch latest article:", list_options).prompt()
                 {
-                    println!(
-                        "\n📥 Testing fetch from {} (articles {} to {})",
-                        selection, group_info.low, group_info.high
-                    );
-
-                    if group_info.high >= group_info.low {
-                        let test_article_num = group_info.high;
-                        println!("Attempting to fetch article #{}...", test_article_num);
-
-                        match connect_to_nntp_server(
-                            &server.hostname,
-                            server.port,
-                            args.username.clone(),
-                            args.password.clone(),
-                        ) {
-                            Ok(mut stream) => {
-                                // Select the group first
-                                match stream.group(selection) {
-                                    Ok(_) => match stream.raw_article_by_number(test_article_num) {
-                                        Ok(raw_lines) => {
-                                            println!(
-                                                "✅ Successfully fetched article #{}",
-                                                test_article_num
-                                            );
-                                            println!("Size: {} lines", raw_lines.len());
-                                            println!(
-                                                "First few lines: {}",
-                                                raw_lines
-                                                    .iter()
-                                                    .take(3)
-                                                    .map(|s| s.as_str())
-                                                    .collect::<Vec<_>>()
-                                                    .join(", ")
-                                            );
-                                        }
-                                        Err(e) => {
-                                            println!("⚠️  Article unavailable: {}", e);
-                                        }
-                                    },
-                                    Err(e) => {
-                                        println!("⚠️  Failed to select group: {}", e);
-                                    }
-                                }
-                                let _ = stream.quit();
-                            }
-                            Err(e) => {
-                                println!("⚠️  Failed to connect: {}", e);
-                            }
+                    if let Some((_, group_info)) =
+                        groups_info.iter().find(|(name, _)| name == selection)
+                    {
+                        if group_info.high >= group_info.low {
+                            let latest = vec![group_info.high as usize];
+                            fetch_and_display_articles(conn.stream(), selection, &latest);
+                        } else {
+                            println!("⚠️  Group appears to be empty (low > high)");
                         }
-                    } else {
-                        println!("⚠️  Group appears to be empty (low > high)");
                     }
                 }
             }
+            range_str => match try_parse_id_range(range_str) {
+                Some(ids) => {
+                    let count = groups_info.len();
+                    for (i, (group_name, _)) in groups_info.iter().enumerate() {
+                        if i > 0 {
+                            let proceed = Confirm::new(&format!(
+                                "Continue to '{}'? ({}/{})",
+                                group_name,
+                                i + 1,
+                                count
+                            ))
+                            .with_default(true)
+                            .prompt()
+                            .unwrap_or(false);
+
+                            if !proceed {
+                                break;
+                            }
+                        }
+                        fetch_and_display_articles(conn.stream(), group_name, &ids);
+                    }
+                }
+                None => {
+                    eprintln!("⚠️  Try again or enter 'n' to go back, 'q' to quit.");
+                }
+            },
         }
+    }
+}
+
+/// Run batch mode: filter groups by glob pattern, fetch articles by id range.
+fn batch_mode(
+    stream: &mut NNTPStream,
+    groups: &[String],
+    list_pattern: &str,
+    id: &str,
+) -> mlh_archiver::Result<()> {
+    let matching = filter_by_glob(groups, list_pattern);
+    let count = matching.len();
+
+    println!("✅ Found {} list(s) matching '{}'\n", count, list_pattern);
+
+    if matching.is_empty() {
+        return Ok(());
+    }
+
+    let ids = parse_id_range(id);
+
+    for (i, group_name) in matching.iter().enumerate() {
+        if i > 0 {
+            let proceed = Confirm::new(&format!(
+                "Continue to '{}'? ({}/{})",
+                group_name,
+                i + 1,
+                count
+            ))
+            .with_default(true)
+            .prompt()
+            .unwrap_or(false);
+
+            if !proceed {
+                println!("Exiting.");
+                break;
+            }
+        }
+
+        fetch_and_display_articles(stream, group_name, &ids);
     }
 
     println!("\n✨ Done!");
     Ok(())
+}
+
+fn filter_by_glob(groups: &[String], pattern: &str) -> Vec<String> {
+    let pat = match Pattern::new(pattern) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("❌ Invalid glob pattern '{}': {}", pattern, e);
+            std::process::exit(1);
+        }
+    };
+    let mut matching: Vec<String> = groups.iter().filter(|g| pat.matches(g)).cloned().collect();
+    matching.sort();
+    matching
+}
+
+fn parse_id_range(input: &str) -> Vec<usize> {
+    let normalized = input.replace("..", "-");
+    match parse_sequence(&normalized) {
+        Ok(iter) => {
+            let ids: Vec<usize> = iter.collect();
+            if ids.is_empty() {
+                eprintln!("❌ Empty id range: '{}'", input);
+                std::process::exit(1);
+            }
+            ids
+        }
+        Err(e) => {
+            eprintln!("❌ Invalid id range '{}': {}", input, e);
+            eprintln!("   Supported formats: 42, 1-10, 1..10, 1,3,5-7");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn try_parse_id_range(input: &str) -> Option<Vec<usize>> {
+    let normalized = input.replace("..", "-");
+    match parse_sequence(&normalized) {
+        Ok(iter) => {
+            let ids: Vec<usize> = iter.collect();
+            if ids.is_empty() {
+                None
+            } else {
+                Some(ids)
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+fn fetch_and_display_articles(stream: &mut NNTPStream, group_name: &str, ids: &[usize]) {
+    match stream.group(group_name) {
+        Ok(info) => {
+            println!(
+                "\n📁 {}  (articles {}..{})",
+                group_name, info.low, info.high
+            );
+        }
+        Err(e) => {
+            eprintln!("⚠️  Failed to select group '{}': {}", group_name, e);
+            let _ = stream.quit();
+            return;
+        }
+    }
+
+    for &id in ids {
+        match stream.article_by_number(id as isize) {
+            Ok(article) => {
+                let subject = article
+                    .headers
+                    .get("Subject")
+                    .map(|s| s.as_str())
+                    .unwrap_or("(no subject)");
+                let from = article
+                    .headers
+                    .get("From")
+                    .map(|s| s.as_str())
+                    .unwrap_or("(unknown)");
+                let date = article
+                    .headers
+                    .get("Date")
+                    .map(|s| s.as_str())
+                    .unwrap_or("(unknown)");
+
+                println!("\n── Article #{} ──", id);
+                println!("Subject: {}", subject);
+                println!("From:    {}", from);
+                println!("Date:    {}", date);
+                println!("{}", "─".repeat(50));
+                for line in &article.body {
+                    println!("{}", line);
+                }
+            }
+            Err(e) => {
+                println!("⚠️  Article #{} unavailable: {}", id, e);
+            }
+        }
+    }
 }
 
 /// Prompt user for NNTP server URL
@@ -371,63 +498,26 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     }
 }
 
-/// Generate minimal config snippet for selected lists
-fn generate_config_yaml(server: &ServerConfig, groups: &[String]) -> String {
-    let lists_yaml = groups
-        .iter()
-        .map(|g| format!("      - {}", g))
-        .collect::<Vec<_>>()
-        .join("\n");
+/// Wrapper around [`NNTPStream`] that calls `quit()` on drop, ensuring the
+/// connection is cleanly closed on normal exit, error, or panic.
+struct NntpConnection(Option<NNTPStream>);
 
-    let port_line = match server.port {
-        Some(p) => format!("  port: {}", p),
-        None => "  # port: 119  # optional, defaults to 119".to_string(),
-    };
+impl NntpConnection {
+    fn new(stream: NNTPStream) -> Self {
+        NntpConnection(Some(stream))
+    }
 
-    format!(
-        r#"# NNTP Configuration Snippet
-# Add this to your archiver_config.yaml
-
-nntp:
-  hostname: "{}"
-{}
-  read_lists:
-{}
-"#,
-        server.hostname, port_line, lists_yaml
-    )
+    fn stream(&mut self) -> &mut NNTPStream {
+        self.0.as_mut().expect("NntpConnection already consumed")
+    }
 }
 
-/// Generate full configuration file content
-fn generate_full_config_yaml(server: &ServerConfig, groups: &[String]) -> String {
-    let lists_yaml = groups
-        .iter()
-        .map(|g| format!("      - {}", g))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let port_line = match server.port {
-        Some(p) => format!("  port: {}", p),
-        None => "  # port: 119  # optional, defaults to 119".to_string(),
-    };
-
-    format!(
-        r#"# MLH Archiver Configuration
-# Generated by check_nntp
-
-nthreads: 2
-output_dir: "./output"
-loop_groups: true
-
-nntp:
-  hostname: "{}"
-{}
-  read_lists:
-{}
-  # email_range: "1-100"  # Optional: fetch specific range
-"#,
-        server.hostname, port_line, lists_yaml
-    )
+impl Drop for NntpConnection {
+    fn drop(&mut self) {
+        if let Some(ref mut stream) = self.0 {
+            let _ = stream.quit();
+        }
+    }
 }
 
 #[cfg(test)]

@@ -5,6 +5,11 @@ use clap::{Parser, ValueHint};
 use config::Config;
 use glob::glob;
 
+// The file `built.rs` was placed there by cargo and `build.rs`
+pub(crate) mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
+
 /// CLI arguments for the parser binary.
 #[derive(Debug, Parser, Default)]
 pub struct Opts {
@@ -16,7 +21,7 @@ pub struct Opts {
 /// Parser configuration deserialized from a YAML/JSON/TOML file.
 ///
 /// All fields except `lists_to_parse` are required. See the example config:
-/// [`example_parser_config.yaml`](https://gitlab.com/ccsl-usp/codev/MLH-archiver/blob/main/example_parser_config.yaml).
+/// [`example_parser_config.yaml`](https://gitlab.com/ccsl-usp/codev/MailingListsHeritage/blob/main/example_parser_config.yaml).
 #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone)]
 pub struct AppConfig {
     /// Number of worker threads.

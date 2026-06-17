@@ -1,5 +1,7 @@
 spell-check:
   stage: test
+  tags:
+    - self-hosted 
   image: rust:latest
   script:
     - cargo install typos-cli

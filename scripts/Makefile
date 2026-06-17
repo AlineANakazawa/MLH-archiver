@@ -19,14 +19,37 @@ _build-rs:
 		cargo build --bin $(BIN) --release; \
 	else \
 		echo "==> Rust toolchain not found, building with Docker (Image: $(RUST_DOCKER_IMAGE))..."; \
-		$(CONTAINER) run --rm \
-			-it -u $(id -u):$(id -g) \
+		$(CONTAINER) run --rm -t \
 			--network=host \
 			-v $(REPO_ROOT):/usr/src/app:z \
 			-w /usr/src/app \
 			$(RUST_DOCKER_IMAGE) \
 			cargo build --bin $(BIN) --release; \
 	fi
+
+PI_IMAGE ?= mlh-create-example-pi
+
+USERN_MAP :=
+ifeq ($(CONTAINER),podman)
+USERN_MAP := --userns=keep-id
+endif
+
+.PHONY: create-example-pi
+create-example-pi:
+	@echo "==> Building container image for example public-inbox..."
+	$(CONTAINER) build -t $(PI_IMAGE) --build-arg USER_ID=$(shell id -u) --build-arg GROUP_ID=$(shell id -g) -f ./create_example_pi/Containerfile $(REPO_ROOT)
+	@echo "==> Creating output directory..."
+	rm -rf $(REPO_ROOT)/data
+	mkdir -p $(REPO_ROOT)/data
+	@echo "==> Generating example public-inbox v2 repository..."
+	$(CONTAINER) run --rm -t \
+		$(USERN_MAP) \
+		-w /data \
+		-v $(REPO_ROOT)/data:/data:z \
+		-v $(REPO_ROOT)/mlh_parser/tests/fixtures:/fixtures:ro \
+		$(PI_IMAGE) \
+		/fixtures /data
+	@echo "==> Example public-inbox created at $(REPO_ROOT)/data/"
 
 .PHONY: clean
 clean:
@@ -53,11 +76,10 @@ peek:
 		uv run --project ./peek_parquet ./peek_parquet/peek_files.py $(PEEK_PATH) ;\
 	else \
 		echo "==> uv toolchain not found, running in container..."; \
-		$(CONTAINER) run --rm \
-			-it -u $(id -u):$(id -g) \
+		$(CONTAINER) run --rm -t \
 			-v ./:/usr/src/app:z \
 			-v $(PEEK_PATH):/target_path:z \
 			-w /usr/src/app \
-			$$($(CONTAINER) build -q -f $(DEV_IMAGE) . ) \
+			$$($(CONTAINER) build -q --build-arg USER_ID=$(shell id -u) --build-arg GROUP_ID=$(shell id -g) -f $(DEV_IMAGE) . ) \
 			bash -c "uv run --project ./peek_parquet ./peek_parquet/peek_files.py --dir /target_path" ; \
 	fi

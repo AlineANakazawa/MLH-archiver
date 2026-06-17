@@ -1,4 +1,4 @@
-# Mailing Lists Archiver - Create Datasets from Mailing Lists
+# Mailing Lists Heritage - Create Datasets from Mailing Lists
 
 Collect and archive locally all emails from mailing lists, parse them into structured datasets, and analyze them while preserving privacy.
 
@@ -23,7 +23,7 @@ This project consists of four main components:
 |-----------|-------------|----------|
 | **[MLH Archiver](mlh_archiver/)** | Downloads emails from NNTP servers and stores them as raw emails or Parquet (configurable) | Rust |
 | **[MLH Parser](mlh_parser/)** | Parses raw emails into structured Parquet datasets with Hive partitioning | Rust |
-| **[MLH Anonymizer](anonymizer/)** | Pseudo-anonymizes personal identification using SHA1 digests | Python |
+| **[MLH Anonymizer](anonymizer/)** | Pseudo-anonymizes personal identification using SHA1 digests | Rust |
 | **[MLH Analysis](analysis/)** | Example analysis scripts for exploring mailing list data | Python |
 
 Each component has its own detailed documentation:
@@ -34,73 +34,137 @@ Each component has its own detailed documentation:
 - [Analysis Documentation](analysis/README.md)
 
 ---
+## Using with a Published dataset
 
+If you are using this repository to test and analyse a built dataset:
+
+1. Download the compressed (.tar.gz) files into the [./dataset/](./dataset/) folder.
+2. Run `make decompress_dataset` to decompress the dataset
+3. Run `make move_dataset_into_default_folder` to have the files in their expected locations
+
+Now, the analysis should work as if the tool had just created the dataset.
+
+---
 ## Quick Start
 
-### Step 1: Configure the Archiver
+### Demo Mode (self-contained)
+
+To quickly explore the pipeline with sample mailing list data, run the one-command demo setup:
+
+```bash
+make setup-demo
+```
+
+This generates a local public-inbox v2 repository from the test emails, installs pre-configured config files (backing up any existing ones), and sets up the full pipeline to run against the local data. Once complete, run `make run` to execute the entire pipeline.
+
+### Step 1: Cloning
 
 1. Clone recursively
 
 One of the dependencies is a git submodule. To build correctly
 
-   ```bash
-   git clone --recurse-submodules git@gitlab.com/ccsl-usp/codev/MLH-archiver.git
+```bash
+# with http
+git clone --recurse-submodules https://gitlab.com/ccsl-usp/codev/MailingListsHeritage.git
+
+# with ssh
+git clone --recurse-submodules git@gitlab.com:ccsl-usp/codev/MailingListsHeritage.git
+```
+
+Or, if you cloned without recursive: 
+```bash
+# in case you did:
+# git clone https://gitlab.com/ccsl-usp/codev/MailingListsHeritage.git
+cd MailingListsHeritage
+git submodule update --init --recursive
+```
+
+Tip: you can configure git to automatically convert cloning to your preferred protocol:
+
+```bash
+git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+git submodule update --init --recursive
+# and to revert the config:
+git config --global --remove-section url."https://gitlab.com/"
    ```
 
-   Or if you dont have your ssh keys configured in GitHub,
 
-   ```bash
-   git clone https://gitlab.com/ccsl-usp/codev/MLH-archiver.git
-   cd MLH-archiver
-   git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
-   git submodule update --init --recursive
-   # and to revert the config:
-   git config --global --remove-section url."https://gitlab.com/"
-   ```
+### Step 2: Configuring
 
 1. Copy the example configuration file:
 
-   ```bash
-   cp example_archiver_config.yaml archiver_config.yaml
-   ```
+```bash
+make create-default-configs
+```
 
-2. Edit `archiver_config.yaml` with your NNTP server details:
+or manually copy:
 
-   ```yaml
-    nthreads: 2
-    output_dir: "./output"
-    loop_groups: true
-    write_mode: "parquet:10000"  # or "raw_email"
+```bash
+cp example_archiver_config.yaml   archiver_config.yaml
+cp example_parser_config.yaml     parser_config.yaml
+cp example_anonymizer_config.yaml anonymizer_config.yaml
+```
 
-    read_lists:
-      nntp:
-       - dev.example.me.lists.gfs2
-       - dev.example.me.lists.iommu
-   nntp:
-      hostname: "nntps://nntp.example.com"
-   ```
+2. Edit `archiver_config.yaml` with your Source details. You can read from a NNTP server or a local directory with PublicInbox repositories:
 
-   **Glob patterns** are also supported in `read_lists`. Use `*` or `?` to match multiple lists:
 
-   ```yaml
-   nntp:
-     hostname: "nntp.example.com"
-     port: 119
-   read_lists:
-      nntp:
-       # Match all lists starting with "dev.example."
-       - "dev.example.*"
-       # Match any list containing ".synth"
-       - "*.synth*"
-       # Mix exact names and patterns
-       - specific.list.name
-   ```
+### PublicInbox Examples: 
+
+```yaml
+nthreads: 2
+output_dir: "./output/archiver"
+public_inbox:
+  origin: public-inbox.example.org
+  import_directory: /media/public-inbox-data
+
+```
+
+### NNTP Examples: 
+```yaml
+nthreads: 2
+output_dir: "./output/archiver"
+loop_groups: false
+write_mode: "parquet:50000"  # or "raw_email"
+
+read_lists:
+    nntp:
+    - dev.example.me.lists.gfs2
+    - dev.example.me.lists.iommu
+nntp:
+    hostname: "nntps://nntp.example.com"
+```
+
+**Glob patterns** are also supported in `read_lists`. Use `*` or `?` to match multiple lists:
+
+```yaml
+nntp:
+    hostname: "nntp.example.com"
+    port: 119
+read_lists:
+    nntp:
+    # Match all lists starting with "dev.example."
+    - "dev.example.*"
+    # Match any list containing ".synth"
+    - "*.synth*"
+    # Mix exact names and patterns
+    - specific.list.name
+```
+
+**Authentication** is also supported:
+
+```yaml
+nntp:
+  hostname: "news.example-server.org"
+  username: username
+  password: password
+  port: 119
+```
 
 > [!WARNING]
 > **Do not set `nthreads` above 4 if you don't control the server you are fetching from.**
 > Be respectful to public infrastructure. This tool is designed to avoid being seen as an abusive scraping bot.
 
-### Step 2: Run the Pipeline
+### Step 3: Run the Pipeline
 
 ```bash
 # Build and run the whole Pipeline
@@ -185,11 +249,6 @@ Assuming you have Python installed,
 Install the uv package manager:
 <https://docs.astral.sh/uv/getting-started/installation/>
 
-**Additional Requirements:**
-
-- `libiconv` (for the archiver's character encoding support)
-- Git
-
 #### Option 3: Dev Container
 
 This repository includes a [`.devcontainer`](.devcontainer/) configuration for VS Code or other compatible editors.
@@ -201,7 +260,7 @@ This repository includes a [`.devcontainer`](.devcontainer/) configuration for V
 
 **Usage:**
 
-1. Open the project in VS Code
+1. Open the project in your editor (that supports devcontainer)
 2. Click "Reopen in Container" when prompted
 3. The dev container will build automatically
 
@@ -236,19 +295,10 @@ The root [`Makefile`](Makefile) orchestrates all components. Run commands from t
 | `make debug-parser` | Run parser in debug mode |
 | `make debug-anonymizer` | Run anonymizer in debug mode |
 | `make debug-analysis` | Run analysis in debug mode |
+| `make check_config_files` | Verify required config files are present |
+| `make create-default-configs` | Create config files from examples |
+| `make setup-demo` | One-command demo setup with sample data |
 | `make peek PEEK_PATH=dataset_dir` |  Get basic Statistics about a parquet dataset|
-
-**Archiver Test Coverage:**
-
-- Unit tests: Range parsing, configuration loading, error types
-- Integration tests: Full download, range selection (`"5"`, `"1-3"`, `"1,5,10"`, `"1,3-5,10"`)
-
-**Prerequisites:**
-
-| Component | Requirements |
-|-----------|--------------|
-| **Archiver & Parser** | Rust/Cargo, or Podman/Docker for containerized builds |
-| **Anonymizer** | Podman/Podman-compose or Docker/Docker-compose |
 
 ---
 
@@ -353,6 +403,53 @@ check_git --inbox-dir /path/to/inboxes --email-id 0000000056-e0-5dadd9f0f9884ed3
 | `--email-id <ID>` | Look up and print a single email by its formatted identifier |
 | `--verbose` | Enable verbose (debug) logging |
 
+### check-nntp
+
+CLI tool for browsing NNTP mailing lists and fetching specific emails, located in [`scripts/check_nntp/`](scripts/check_nntp/). Supports an interactive TUI and a batch mode for targeted article lookups.
+
+**Build:**
+
+```bash
+# Using make from the project root:
+make build-check-nntp
+
+# Or manually with cargo:
+cargo build --release --package check_nntp
+```
+
+**Usage:**
+
+```bash
+# Interactive mode (browse and preview lists)
+check_nntp
+
+# Interactive mode with explicit server
+check_nntp -s nntp://nntp.example.com
+check_nntp -s nntps://nntp.example.com
+check_nntp -s nntp://nntp.example.com:8119
+
+# Batch mode: fetch specific articles by list glob and id range
+check_nntp -s nntp://nntp.example.com -l "*.lkml" --id 42
+check_nntp -s nntp://nntp.example.com -l "*.lkml" --id 1-10
+check_nntp -s nntp://nntp.example.com -l "*.lkml" --id '1..10'
+check_nntp -s nntp://nntp.example.com -l "*.lkml" --id '1,3,5-7'
+
+# Batch mode with authentication
+check_nntp -s nntp://nntp.example.com -l "*.lkml" --id 1-10 -u myuser -P mypassword
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server <URL>` | NNTP server URL (`nntp://host`, `nntps://host`, `nntp://host:port`) |
+| `-l, --list <PATTERN>` | Glob pattern to filter mailing lists. Triggers batch mode (requires `--id`) |
+| `--id <VALUE>` | Article ID or range in batch mode (`42`, `1-10`, `1..10`, `1,3,5-7`) |
+| `-u, --username <USER>` | NNTP username for authentication |
+| `-P, --password <PASS>` | NNTP password for authentication |
+| `--export-config` | Export configuration to YAML file after browsing |
+| `-v, --verbose` | Enable verbose (debug) logging |
+
+In batch mode, if multiple lists match the glob pattern, the tool fetches articles one list at a time and prompts to confirm before moving to the next list.
+
 ---
 
 ## Architecture Details
@@ -406,8 +503,11 @@ The parser is implemented in Rust and uses:
 
 The anonymizer applies SHA1 hashing to personally identifiable information (PII):
 
-- Deterministic: Same input always produces the same hash
-- Enables longitudinal analysis while protecting privacy
+- **Polars**: Fast columnar transformations with parallel execution per mailing list
+- **SHA1 Hashing**: Deterministic pseudo-anonymization of PII fields (`from`, `to`, `cc`, `trailers`, `raw_body` (identities contained in it))
+- **Parquet Output**: Output partitioned by mailing list under `dataset/` (anonymized data) and `id_map_from/` (identity map for validation)
+- **Configuration**: YAML-based config file (`example_anonymizer_config.yaml`) supporting thread count, I/O paths, and list selection
+- **Batch Processing**: Row-group controlled output with configurable batch size for memory efficiency
 - See [Anonymizer Documentation](anonymizer/README.md#security-considerations) for security considerations
 
 ---

@@ -4,6 +4,10 @@ import glob
 
 
 def main(dataset_dir, output_dir):
+    if not dataset_dir:
+        print("Expected input dataset missing")
+        return
+
     # pass list names split by ","
     # read all lists by default
     LISTS_OF_INTEREST = os.environ.get("LISTS_OF_INTEREST", "").split(",")
@@ -24,10 +28,22 @@ def main(dataset_dir, output_dir):
     for mailing_list in LISTS_OF_INTEREST:
         df = pl.read_parquet(f"{dataset_dir}/list={mailing_list}/*.parquet")
         df = df.filter(
-            pl.col("subject").str.starts_with("[PATCH") & pl.col("code").list.len() == 0
+            pl.col("has_patch_tag")
+            & (~pl.col("has_response_tag"))
+            & (~pl.col("has_forward_tag"))
+            & (pl.col("code").is_null() | (pl.col("code").list.len() == 0))
+            # patchset heads usually have no patch, remove them from this analysis
+            & (
+                pl.col("patchset_sequence_number").is_null()
+                | (
+                    ~pl.col("patchset_sequence_number").str.starts_with("0/")
+                    & ~pl.col("patchset_sequence_number").str.starts_with("00/")
+                    & ~pl.col("patchset_sequence_number").str.starts_with("000/")
+                )
+            )
         )
         df = df.with_columns(pl.lit(mailing_list).alias("list"))
-        df = df.select(["list", "message-id", "subject", "__file_name"])
+        df = df.select(["list", "message_id", "subject", "_source_reference"])
 
         if not header_written:
             df.write_csv(out_path, include_header=True)

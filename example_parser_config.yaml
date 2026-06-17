@@ -5,5 +5,5 @@ input_dir_path: "./output/archiver/"
 output_dir_path: "./output/parser/"
 fail_on_parsing_error: false
 
-# lists_to_parse: 
-
+# (optional, parses all by default)
+# lists_to_parse: []

@@ -173,6 +173,133 @@ clean:
 	$(MAKE) -C scripts clean
 	$(MAKE) -C mlh_archiver clean
 
+
+CONFIG_FILES := archiver_config.yaml anonymizer_config.yaml parser_config.yaml
+DEMO_CONFIG_DIR := scripts/create_example_pi
+
+.PHONY: check_config_files
+check_config_files:
+	@echo "==> Checking config files..."
+	@missing=0; \
+	for f in $(CONFIG_FILES); do \
+		if [ -f "$$f" ]; then \
+			echo "  [OK] $$f"; \
+		else \
+			echo "  [MISSING] $$f"; \
+			missing=1; \
+		fi; \
+	done; \
+	if [ $$missing -eq 1 ]; then \
+		echo ""; \
+		echo "Some config files are missing. Run 'make create-default-configs' to create them."; \
+	fi
+
+.PHONY: create-default-configs
+create-default-configs:
+	@echo "==> Creating default config files from examples..."
+	@for f in $(CONFIG_FILES); do \
+		if [ -f "$$f" ]; then \
+			echo "  $$f already exists, skipping."; \
+		elif [ -f "example_$$f" ]; then \
+			cp "example_$$f" "$$f"; \
+			echo "  Created $$f from example_$$f"; \
+		else \
+			echo "  No example found for $$f"; \
+		fi; \
+	done
+	@echo ""
+	@echo "==> IMPORTANT: edit archiver_config.yaml before running the pipeline."
+	@echo "    It requires source server details that must be configured manually."
+
+.PHONY: setup-demo
+setup-demo:
+	@echo "==> Setting up demo environment..."
+	@existing=""; \
+	for f in $(CONFIG_FILES); do \
+		if [ -f "$$f" ]; then \
+			existing="$$existing $$f"; \
+		fi; \
+	done; \
+	if [ -n "$$existing" ]; then \
+		echo ""; \
+		echo "WARNING: The following config files already exist:$$existing"; \
+		echo "Running setup-demo will replace them."; \
+		echo ""; \
+		read -p "Create backups and continue? [Y/n] " answer; \
+		case $$answer in \
+			[Nn]*) echo "Cancelled."; exit 0;; \
+			*) \
+				for f in $$existing; do \
+					mv "$$f" "backup.$$f"; \
+					echo "  Backed up $$f -> backup.$$f"; \
+				done;; \
+		esac; \
+	fi
+	@echo "==> Copying demo config files..."
+	@for f in $(CONFIG_FILES); do \
+		demo="$(DEMO_CONFIG_DIR)/demo_$$f"; \
+		if [ -f "$$demo" ]; then \
+			cp "$$demo" "$$f"; \
+			echo "  $$f"; \
+		fi; \
+	done
+	@$(MAKE) create-example-pi
+	@echo ""
+	@echo "=============================="
+	@echo "  Demo environment is ready."
+	@echo "  Run 'make run' to start the pipeline,"
+	@echo "  or run components individually."
+	@echo "=============================="
+
+.PHONY: create-example-pi
+create-example-pi:
+	$(MAKE) -C scripts create-example-pi
+
 .PHONY: peek
 peek:
 	$(MAKE) -C scripts peek
+
+# ------------------------------------------------------------------------------
+# Dattaset manipulation targets
+# ------------------------------------------------------------------------------
+
+
+DATASET_NAME=LKML5Ws
+
+.PHONY: compress_dataset
+compress_dataset:
+	@echo "==> Checking for compressed datasets in ./dataset/..."
+	@if ls ./dataset/*.tar.gz 1>/dev/null 2>&1; then \
+		echo "  Found compressed datasets. Cleaning..."; \
+		cd ./dataset && rm -rf *.tar.gz && cd .. ;\
+	fi;
+	@cd ./dataset && bash ./compression_script.sh
+
+
+.PHONY: decompress_dataset
+decompress_dataset:
+	@echo "==> Checking for compressed datasets in ./dataset/..."
+	@if ls ./dataset/*.tar.gz 1>/dev/null 2>&1; then \
+		echo "  Found compressed datasets. Extracting..."; \
+		cd ./dataset && bash ./decompression_script.sh; \
+	else \
+		echo "  No .tar.gz files found in ./dataset/"; \
+		echo "  Please download compressed datasets to ./dataset/ and try again."; \
+		exit 1; \
+	fi
+
+
+.PHONY: move_dataset_into_default_folder
+move_dataset_into_default_folder:
+	@echo "==> The analysis script expect data to be in './output/anonymizer/dataset/'. Moving..."
+	@mkdir -p ./output/anonymizer/dataset
+	@mv ./dataset/$(DATASET_NAME)/* ./output/anonymizer/dataset/
+	@rm -rf ./dataset/$(DATASET_NAME)/*
+	@echo " Main dataset:"
+	ls ./output/anonymizer/dataset/
+	@mkdir -p ./output/parser/lineage/
+	@mkdir -p ./output/parser/dataset/
+	@mv ./dataset/$(DATASET_NAME)_lineage/* ./output/parser/
+	@echo " Data-Lineage:"
+	ls ./output/parser/lineage
+	@echo " Done!"

@@ -25,5 +25,6 @@ pub mod nntp_worker;
 // Re-export commonly used types for convenience
 pub use nntp_config::NntpConfig;
 pub use nntp_utils::{
-    connect_to_nntp_server, get_group_info, retrieve_groups_info, retrieve_lists_with_connection,
+    connect_to_nntp_server, get_group_info, retrieve_groups_info,
+    retrieve_groups_info_with_connection, retrieve_lists, retrieve_lists_with_connection,
 };

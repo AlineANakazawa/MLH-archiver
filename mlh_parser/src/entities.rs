@@ -22,10 +22,17 @@ pub struct ParsedEmail {
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: String,
+    /// Tags read from the Subject message
+    pub subject_tags: SubjectTags,
+    /// date, according to our best attempts at correcting it
     pub date: Option<chrono::DateTime<chrono::Utc>>,
-    pub client_date: String,
+    /// the strings in the "Date" header, with incorrect data
+    pub client_date: Vec<String>,
+    /// reference to the previous message-id in case this is a reply
     pub in_reply_to: Option<String>,
+    /// reference to other emssage-ids. Usually in threads or patchsets
     pub references: Vec<String>,
+    /// list-id header. Can be different than the "list" a message was read from.
     pub x_mailing_list: Option<String>,
     /// Trailers extracted from the signature block.
     pub trailers: Vec<Attribution>,
@@ -33,5 +40,29 @@ pub struct ParsedEmail {
     pub code: Vec<String>,
     /// Full email body text, CRLF-normalized to LF.
     pub raw_body: String,
-    pub file_name: String,
+    /// pre-calculated SHA1 sum of the raw body
+    pub body_sha1: String,
+    /// source reference is a information to trace back to the original source
+    /// it will be different for each kind of email source.
+    pub source_reference: String,
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct SubjectTags {
+    /// `[PATCH]`
+    pub has_patch_tag: bool,
+    /// `[RFC]`
+    pub has_rfc_tag: bool,
+    /// `Re:`
+    pub has_response_tag: bool,
+    /// `Fwd:`
+    pub has_forward_tag: bool,
+    /// `[v3]`
+    pub patch_version: Option<u16>,
+    /// `[0/3]`
+    pub patchset_sequence_number: Option<String>,
+    /// list of tags considered, in order as they appear
+    pub subject_tags: Vec<String>,
+    /// the subject message, cut after the last tag
+    pub untagged_subject: String,
 }
